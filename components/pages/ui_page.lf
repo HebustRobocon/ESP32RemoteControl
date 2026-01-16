@@ -1,0 +1,13 @@
+[sections:ui_table_sections]
+entries:
+    ui_table
+
+[scheme:ui_table_scheme]
+entries:
+    ui_table_sections -> flash_rodata
+
+[mapping:ui_table_mapping]
+archive: *
+entries:
+    * (ui_table_scheme);
+        ui_table_sections -> flash_rodata KEEP() SURROUND(ui_table)
