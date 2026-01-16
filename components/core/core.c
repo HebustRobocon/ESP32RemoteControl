@@ -126,7 +126,7 @@ RemoteStateFlush_t get_remote_flush_func()
     return kRemoteStateFlushFunc;
 }
 
-void get_remote_state(float rocker_raw_data[4],uint16_t* key_data)
+void get_remote_state(int rocker_raw_data[4],uint16_t* key_data)
 {
     memcpy(rocker_raw_data, rocker_adc_value, sizeof(rocker_adc_value));
     *key_data = buttons_state;

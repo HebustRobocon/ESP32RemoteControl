@@ -356,7 +356,7 @@ uint32_t asyn_comm_send_pack_nak(uint8_t *src, uint8_t cmd, uint16_t size)
 }
 
 // 下行数据包发送（带确认）
-uint32_t comm_send_pack_ack(uint8_t *src, uint8_t cmd, uint16_t size, CommPackSend_Cb send_cb, void *user_data, uint32_t time_out_ms, uint8_t max_retry_num)
+uint32_t comm_send_pack_ack(uint8_t *src, uint8_t cmd, uint16_t size, uint32_t time_out_ms, uint8_t max_retry_num)
 {
     if(!send_req_queue_handle)
         return 0;
