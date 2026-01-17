@@ -13,7 +13,7 @@
 
 typedef struct
 {
-    uint8_t size;
+    uint16_t size;
     uint8_t cmd;
     uint8_t *data;
     uint8_t max_retry_cnt;
@@ -32,7 +32,7 @@ typedef struct
 
 typedef struct
 {
-    QueueHandle_t semphr_handle;
+    SemaphoreHandle_t semphr_handle;
     StaticQueue_t queue_data;
 } StaticSemphrBlock_t;
 
@@ -45,8 +45,8 @@ typedef struct
     CommPackSend_Cb finished_cb;
     void *user_data;
 
-    // ACK超时重传信息
-    uint8_t size;
+    // ACK超时重传信息（零拷贝：data 指向外部缓冲，须确保生命周期覆盖整个ACK等待/重试过程）
+    uint16_t size;
     uint8_t cmd;
     uint8_t *data;
     uint8_t retry_cnt;
@@ -57,22 +57,37 @@ static MyList_t *kRecvCbList;
 // 回调函数ID
 static uint32_t kCallbackId;
 
+/* -------------------- 协议常量 -------------------- */
+#define PACK_NEED_ACK   (0x80u)
+#define PACK_OVERHEAD   (8u)     // head(1)+len(1)+cmd(1)+id(4)+sum(1)
+#define PACK_MAX_SIZE   (256u)
+
+typedef enum
+{
+    COMM_BAD_HEAD = 1,
+    COMM_BAD_SUM  = 2,
+    COMM_BAD_LEN  = 3,
+    COMM_BAD_ACK  = 4,
+} CommBadType_t;
+
 // 数据包发送请求队列
 static QueueHandle_t send_req_queue_handle;
-// 串口发送互斥锁
-static QueueHandle_t uart_tx_mutex;
+// 串口发送互斥锁（用于保护 uart_write_bytes 原子性）
+static SemaphoreHandle_t uart_tx_mutex;
+// 接收回调链表互斥锁（保护 kRecvCbList 的增删与遍历）
+static SemaphoreHandle_t recv_cb_list_mutex;
 // 数据包ACK确认信号量池
 static DataPoll_t kCommSendAckSemphrPoll;
 // 包ID，用于区分不同的数据包
 static uint32_t g_pack_id = 1;
 
 /* 发送与接收 buffer */
-static uint8_t send_buffer[256];
-static uint8_t recv_buffer[256];
+static uint8_t send_buffer[PACK_MAX_SIZE];
+static uint8_t recv_buffer[PACK_MAX_SIZE];
 
 // 挂起的待确认包信息
 static AckWaitBlock_t send_ack_blocks[8];
-static QueueHandle_t send_ack_blocks_mutex;
+static SemaphoreHandle_t send_ack_blocks_mutex;
 
 /* -------------------- 包头定义 -------------------- */
 
@@ -91,10 +106,9 @@ void RemoteCommInit(BadDataPackCb_t callback)
     kRecvCbList = ListCreate(sizeof(PackDealFunc_t)); // 创建接收回调链表
 
     send_req_queue_handle = xQueueCreate(8, sizeof(DataTransReq_t));
-    uart_tx_mutex = xSemaphoreCreateBinary();
-    xSemaphoreGive(uart_tx_mutex);
+    uart_tx_mutex = xSemaphoreCreateMutex();
+    recv_cb_list_mutex = xSemaphoreCreateMutex();
     send_ack_blocks_mutex = xSemaphoreCreateMutex();
-    xSemaphoreGive(send_ack_blocks_mutex);
 
     /* UART初始化 */
     uart_config_t uart_config = {
@@ -134,8 +148,15 @@ void SendDataPackTask(void *param)
         printf("执行发送任务\r\n");
         uint32_t pack_id = g_pack_id++;
 
+        if (req.size + PACK_OVERHEAD > PACK_MAX_SIZE) {
+            if (req.finished_cb) {
+                req.finished_cb(req.user_data, 0);
+            }
+            continue;
+        }
+
         send_buffer[0] = PACK_HEAD;
-        send_buffer[1] = req.size + 8;
+        send_buffer[1] = (uint8_t)(req.size + PACK_OVERHEAD);
         send_buffer[2] = req.cmd;
         memcpy(&send_buffer[3], &pack_id, 4);
         memcpy(&send_buffer[7], req.data, req.size);
@@ -143,12 +164,12 @@ void SendDataPackTask(void *param)
         send_buffer[7 + req.size] = SumCheck(req.size + 7, send_buffer);
 
         xSemaphoreTake(uart_tx_mutex, portMAX_DELAY);
-        for(int i=0;i<req.size + 8;i++)
+        for(int i=0;i<req.size + PACK_OVERHEAD;i++)
             printf("%x",send_buffer[i]);
-        uart_write_bytes(UART_NUM_1, (char *)send_buffer, req.size + 8);
+        uart_write_bytes(UART_NUM_1, (char *)send_buffer, req.size + PACK_OVERHEAD);
         xSemaphoreGive(uart_tx_mutex);
 
-        if (!(req.cmd & 0x80)) // 如果该包不需要进行包确认，那么直接执行发送完成回调
+        if (!(req.cmd & PACK_NEED_ACK)) // 如果该包不需要进行包确认，那么直接执行发送完成回调
         {
             if (req.finished_cb)
                 req.finished_cb(req.user_data, 1);
@@ -197,20 +218,24 @@ void ReceiveDataPackTask(void *param)
         /* ---------- ACK 包 ---------- */
         if (head == ACK_HEAD)
         {
-            uint32_t ack_id;
-            uart_read_bytes(UART_NUM_1, &ack_id, 4, pdMS_TO_TICKS(20));
+            uint32_t ack_id = 0;
+            int got = uart_read_bytes(UART_NUM_1, &ack_id, 4, pdMS_TO_TICKS(20));
+            if (got != 4) {
+                if(param)
+                    ((BadDataPackCb_t)param)(COMM_BAD_ACK);
+                continue;
+            }
 
             xSemaphoreTake(send_ack_blocks_mutex, portMAX_DELAY);
             for (int i = 0; i < 8; i++)
             {
-                if (send_ack_blocks[i].is_using)
+                if (send_ack_blocks[i].is_using && send_ack_blocks[i].pack_id == ack_id)
                 {
-                    if (send_ack_blocks[i].pack_id == ack_id) // 匹配成功，正确等待到ACK包
-                    {
+                    if (send_ack_blocks[i].finished_cb) {
                         send_ack_blocks[i].finished_cb(send_ack_blocks[i].user_data, 1);
-                        send_ack_blocks[i].is_using = 0;
-                        break;
                     }
+                    send_ack_blocks[i].is_using = 0;
+                    break;
                 }
             }
             xSemaphoreGive(send_ack_blocks_mutex);
@@ -221,34 +246,56 @@ void ReceiveDataPackTask(void *param)
         if (head != PACK_HEAD)
         {
             if(param)
-                ((BadDataPackCb_t)param)(1);
+                ((BadDataPackCb_t)param)(COMM_BAD_HEAD);
             continue;
         }
 
+        recv_buffer[0] = head;
+
         /* size */
-        uart_read_bytes(UART_NUM_1, &recv_buffer[1], 1, pdMS_TO_TICKS(20));
-        uint8_t data_len = recv_buffer[1];
-        if (data_len > 256)
-            data_len = 256;
+        int size_got = uart_read_bytes(UART_NUM_1, &recv_buffer[1], 1, pdMS_TO_TICKS(20));
+        if (size_got != 1) {
+            if(param)
+                ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            continue;
+        }
 
-        /* CMD + ID + DATA */
-        uart_read_bytes(UART_NUM_1, &recv_buffer[2], data_len - 2 - 1, pdMS_TO_TICKS(50));
+        uint16_t data_len = recv_buffer[1]; // 整包长度（包含 head/len/.../sum）
+        if (data_len > PACK_MAX_SIZE || data_len < PACK_OVERHEAD) {
+            if(param)
+                ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            continue;
+        }
 
-        /* 校验 */
-        uint8_t sum = SumCheck(data_len, recv_buffer);
-        uint8_t recv_sum;
-        uart_read_bytes(UART_NUM_1, &recv_sum, 1, pdMS_TO_TICKS(20));
+        /* CMD + ID + DATA（不含 head/len；sum 单独读） */
+        uint16_t payload_to_read = (uint16_t)(data_len - 2 - 1);
+        int payload_got = uart_read_bytes(UART_NUM_1, &recv_buffer[2], payload_to_read, pdMS_TO_TICKS(50));
+        if (payload_got != (int)payload_to_read) {
+            if(param)
+                ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            continue;
+        }
+
+        /* 校验：sum 覆盖 [0..data_len-2]（不含 sum 本身） */
+        uint8_t sum = SumCheck((uint16_t)(data_len - 1), recv_buffer);
+        uint8_t recv_sum = 0;
+        int sum_got = uart_read_bytes(UART_NUM_1, &recv_sum, 1, pdMS_TO_TICKS(20));
+        if (sum_got != 1) {
+            if(param)
+                ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            continue;
+        }
 
         if (recv_sum != sum)
         {
             if(param)
-                ((BadDataPackCb_t)param)(2);
+                ((BadDataPackCb_t)param)(COMM_BAD_SUM);
             continue;
         }
 
         // 如果当前数据包需要ACK回复，那么立即回复ACK
         uint8_t cmd = recv_buffer[2];
-        if (cmd & PACK_TYPE_MASK)
+        if (cmd & PACK_NEED_ACK)
         {
             uint8_t ack[5];
             ack[0]=ACK_HEAD;
@@ -259,17 +306,19 @@ void ReceiveDataPackTask(void *param)
             xSemaphoreGive(uart_tx_mutex);
         }
 
+        xSemaphoreTake(recv_cb_list_mutex, portMAX_DELAY);
         ResetListIterator(&it);
         PackDealFunc_t *obj;
         while ((obj = IteraterGet(&it)) != NULL)
         {
             if (obj->cmd == (cmd & PACK_CMD_MASK))
             {
-                obj->callback(recv_buffer + 7, data_len - 8, obj->user_data);
+                obj->callback(recv_buffer + 7, (uint16_t)(data_len - PACK_OVERHEAD), obj->user_data);
                 //break;
             }
             IteraterNext(&it);
         }
+        xSemaphoreGive(recv_cb_list_mutex);
     }
 }
 
@@ -325,17 +374,23 @@ static uint32_t recv_list_match_cb(void *user, void *dst)
 uint32_t register_comm_recv_cb(CommPackRecv_Cb callback, uint8_t cmd, void *user_data)
 {
     kCallbackId = kCallbackId + 1;
+    xSemaphoreTake(recv_cb_list_mutex, portMAX_DELAY);
     ListAddElement(kRecvCbList, &(PackDealFunc_t){.callback = callback, .user_data = user_data, .id = kCallbackId, .cmd = cmd});
+    xSemaphoreGive(recv_cb_list_mutex);
     return kCallbackId;
 }
 
 // 取消注册上行数据包接收回调函数
 uint32_t unregister_comm_recv_cb(uint32_t cb_id)
 {
+    xSemaphoreTake(recv_cb_list_mutex, portMAX_DELAY);
     int index = ListGetIndex(kRecvCbList, (void *)cb_id, recv_list_match_cb);
-    if (index == -1)
+    if (index == -1) {
+        xSemaphoreGive(recv_cb_list_mutex);
         return 0;
+    }
     ListDeleteElement(kRecvCbList, index);
+    xSemaphoreGive(recv_cb_list_mutex);
     return 1;
 }
 
@@ -350,7 +405,7 @@ uint32_t asyn_comm_send_pack_nak(uint8_t *src, uint8_t cmd, uint16_t size)
     if(!send_req_queue_handle)
         return 0;
     DataTransReq_t req;
-    req.cmd = cmd & 0x7F;
+    req.cmd = cmd & (~((uint8_t)PACK_NEED_ACK));
     req.data = src;
     req.size = size;
     req.finished_cb = NULL;
@@ -363,7 +418,7 @@ uint32_t comm_send_pack_ack(uint8_t *src, uint8_t cmd, uint16_t size, uint32_t t
     if(!send_req_queue_handle)
         return 0;
     DataTransReq_t req;
-    req.cmd = cmd | 0x80;
+    req.cmd = cmd | PACK_NEED_ACK;
     req.data = src;
     req.size = size;
     req.max_retry_cnt = max_retry_num;
@@ -386,7 +441,7 @@ uint32_t asyn_comm_send_pack_ack(uint8_t *src, uint8_t cmd, uint16_t size, CommP
     if(!send_req_queue_handle)
         return 0;
     DataTransReq_t req;
-    req.cmd = cmd | 0x80;
+    req.cmd = cmd | PACK_NEED_ACK;
     req.data = src;
     req.size = size;
     req.max_retry_cnt = max_retry_num;
