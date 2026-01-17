@@ -31,17 +31,19 @@ static void battery_voltage_show_cb(lv_timer_t *timer)
 
 static void main_page_remote_state_flush_func(const int *rocker, const uint16_t key,void* user_data)
 {
+    static uint16_t _key;
     static int update_cnt=0;
     if((update_cnt++)%10)
         return;
     xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
-    char out_str[24];
-    for(int i=0;i<16;i++)
-        out_str[i]=(key&(0x8000>>i))?'1':'0';
-    out_str[16]=0;
+    char out_str[8]={0};
+    sprintf(out_str,"0x%X",key);
     lv_obj_t *_label=(lv_obj_t *)user_data;
     lv_label_set_text(_label, out_str);
     xSemaphoreGive(get_screen_mutex());
+    _key=key;   //使用静态变量防止发送失败
+    asyn_comm_send_pack_nak(&_key,0x66,sizeof(_key));
+    printf("发送\r\n");
 }
 
 void main_page_create(void *user_data)

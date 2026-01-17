@@ -54,7 +54,7 @@ void lvgl_screen_fresh_task(void *param)
         int64_t start_time=esp_timer_get_time();
         lv_timer_handler();
         xSemaphoreGive(lv_update_mutex);
-        printf("%.2f%%\n",((float)((esp_timer_get_time()-start_time)))/(SCREEN_FRESH_PERIOD_MS*1000)*100.0f);  //统计CPU使用率
+        //printf("%.2f%%\n",((float)((esp_timer_get_time()-start_time)))/(SCREEN_FRESH_PERIOD_MS*1000)*100.0f);  //统计CPU使用率
         vTaskDelayUntil(&last_wake_time,pdMS_TO_TICKS(SCREEN_FRESH_PERIOD_MS));
     }
 }

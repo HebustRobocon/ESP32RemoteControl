@@ -131,7 +131,7 @@ void SendDataPackTask(void *param)
     while (1)
     {
         xQueueReceive(send_req_queue_handle, &req, portMAX_DELAY);
-
+        printf("执行发送任务\r\n");
         uint32_t pack_id = g_pack_id++;
 
         send_buffer[0] = PACK_HEAD;
@@ -143,6 +143,8 @@ void SendDataPackTask(void *param)
         send_buffer[7 + req.size] = SumCheck(req.size + 7, send_buffer);
 
         xSemaphoreTake(uart_tx_mutex, portMAX_DELAY);
+        for(int i=0;i<req.size + 8;i++)
+            printf("%x",send_buffer[i]);
         uart_write_bytes(UART_NUM_1, (char *)send_buffer, req.size + 8);
         xSemaphoreGive(uart_tx_mutex);
 
@@ -264,7 +266,7 @@ void ReceiveDataPackTask(void *param)
             if (obj->cmd == (cmd & PACK_CMD_MASK))
             {
                 obj->callback(recv_buffer + 7, data_len - 8, obj->user_data);
-                break;
+                //break;
             }
             IteraterNext(&it);
         }
