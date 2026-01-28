@@ -21,7 +21,7 @@ void RemoteCoreInit();  //遥控器底层驱动组件初始化
  * @return 电池电压(V)
  */
 float get_battery_voltage();
-
+float Get_Battery_level(float Battery_voltage);
 /**
  * @brief 关闭遥控器
  */

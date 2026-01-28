@@ -14,7 +14,6 @@
 #include "mylist.h"
 #include "dataFrame.h"
 
-
 typedef struct PagePort_t;
 
 typedef void(*PageCreateCb)(void* user_data);
@@ -31,8 +30,6 @@ extern uint8_t _ui_table_end;
 #define UI_CONCAT_BASE(a, b) a##b
 #define UI_CONCAT_EVAL(a, b) UI_CONCAT_BASE(a, b)
 
-
-
 /**
  * @brief 注册新的LVGL页面
  * @param name_str 页面的名字（页面加载的依据）
@@ -45,7 +42,6 @@ extern uint8_t _ui_table_end;
         .create = create_cb \
     }
 
-
 inline uint32_t get_pages_num()
 {
     const PagePort_t * start = (const PagePort_t *)&_ui_table_start;
@@ -53,7 +49,6 @@ inline uint32_t get_pages_num()
 
     return (uint32_t)(end - start);
 }
-
 
 inline PagePort_t *get_pages_from_index(const uint32_t index)
 {
@@ -87,7 +82,5 @@ QueueHandle_t get_screen_mutex();
 uint32_t page_switch(const char* next_page_name,void *next_page_create_param,void* this_page_create_param);
 
 uint32_t return_last_page();
-
-
 
 #endif

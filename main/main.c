@@ -1,24 +1,22 @@
-#include <stdint.h>
+#include <stdint.h>//c语言库
 #include <stdio.h>
 
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h"//FreeRTOS头文件
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 
-#include "ILI9341.h"
+#include "ILI9341.h"//遥控器功能驱动头文件
 #include "FT6336.h"
 #include "comm.h"
 #include "core.h"
 #include "lvgl_port_disp.h"
 #include "page_manager.h"
 
-#include "lvgl/lvgl.h"
+#include "lvgl/lvgl.h"//lvgl库
 #include "lvgl.h"
 
-
-
-#include "driver/sdmmc_host.h"
+#include "driver/sdmmc_host.h"//文件操作系统（SD卡）
 #include "driver/sdmmc_defs.h"
 #include "sdmmc_cmd.h"
 #include "esp_vfs_fat.h"
@@ -29,8 +27,6 @@ void FatFsInit();
 void app_main(void)
 {
     sys_setup();
-    //TODO:NVS初始化
-
     //屏幕显示初始化
     ILI9341_Init();
     FT6636_init();

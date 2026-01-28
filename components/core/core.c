@@ -195,6 +195,26 @@ float get_battery_voltage()
     return battery_voltage;
 }
 
+float Get_Battery_level(float Battery_voltage)
+{
+     // 标准化
+    float x_norm = (Battery_voltage - 3.852) / 0.1979;
+
+    // 多项式计算
+    float y = 5.226 * pow(x_norm, 4)
+             - 4.407 * pow(x_norm, 3)
+             - 17.25 * pow(x_norm, 2)
+             + 42.71 * x_norm
+             + 61.18;
+
+    // 判段逻辑
+    if (y > 100.0) {
+        y = 100.0;
+    }
+
+    return y;
+}
+
 static TaskHandle_t buttons_scane_task_handle;
 /**
  * @brief 遥控器硬件核心初始化，

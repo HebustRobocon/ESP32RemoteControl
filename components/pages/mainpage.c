@@ -1,14 +1,8 @@
 #include "mainpage.h"
 #include "lvgl/lvgl.h"
 
-
-
 void main_page_create(void *user_data);
-
 UI_PAGE_REGISTER("main_page", main_page_create);
-
-
-
 static uint8_t main_page_created_flag = 0;
 static char battery_show_str[24];
 
@@ -23,7 +17,7 @@ static void btn_event_cb(lv_event_t *e)
 static void battery_voltage_show_cb(lv_timer_t *timer)
 {
     lv_obj_t * label=( lv_obj_t *)lv_timer_get_user_data(timer);
-    sprintf(battery_show_str,"Battery voltage:%.2f",get_battery_voltage());
+    sprintf(battery_show_str,"Battery voltage:%.2f%%",Get_Battery_level(get_battery_voltage()));
     lv_label_set_text_static(label, battery_show_str);
     if(get_battery_voltage()<3.6f)
         sys_shutdown();
@@ -57,12 +51,10 @@ void main_page_create(void *user_data)
     //硬件状态更新任务初始化
     RemoteCoreInit();
 
-
     lv_obj_t *keys_state_label = lv_label_create(lv_screen_active());
     lv_label_set_text(keys_state_label, "key:");
     lv_obj_align(keys_state_label, LV_ALIGN_TOP_MID, 0, 0);
     set_remote_flush_func(main_page_remote_state_flush_func,keys_state_label);
-
 
     lv_obj_t *mylabel = lv_label_create(lv_screen_active());
     lv_label_set_text(mylabel, "Main Page Started");
