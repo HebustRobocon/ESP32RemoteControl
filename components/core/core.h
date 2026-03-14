@@ -22,15 +22,6 @@ void RemoteCoreInit();  //遥控器底层驱动组件初始化
  */
 float get_battery_voltage();
 float Get_Battery_level(float Battery_voltage);
-/**
- * @brief 关闭遥控器
- */
-void sys_shutdown();
-
-/**
- * @brief 上电时执行一次以维持遥控器开机状态
- */
-void sys_setup();
 
 /**
  * @brief 设置遥控器状态更新函数。按键/摇杆状态在不断更新，因此有一个FreeRTOS任务会不断扫描他们的状态。
@@ -54,6 +45,5 @@ RemoteStateFlush_t get_remote_flush_func();                         //得到当�
  * @param key_data 按键数据
  */
 void get_remote_state(int rocker_raw_data[4],uint16_t* key_data);
-
 
 #endif

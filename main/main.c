@@ -21,12 +21,13 @@
 #include "sdmmc_cmd.h"
 #include "esp_vfs_fat.h"
 
+#include "driver/uart.h"//UART串口驱动头文件
+
 void SDInit();
 void FatFsInit();
 
 void app_main(void)
 {
-    sys_setup();
     //屏幕显示初始化
     ILI9341_Init();
     FT6636_init();
@@ -34,10 +35,9 @@ void app_main(void)
     QueueHandle_t screen_mutex=mylvgl_port_init();
     page_manager_init("main_page",screen_mutex);
     
-    SDInit();
+    //SDInit();
     while (1)
     {
-        printf("running...\r\n");
         vTaskDelay(5000);
     }
 }

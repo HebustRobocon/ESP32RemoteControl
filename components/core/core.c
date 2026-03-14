@@ -2,6 +2,7 @@
 #include "hardware.h"
 #include "comm.h"
 #include "driver/adc.h"
+#include "math.h"
 
 float NormalizationRocker(int adc_value, int dead_zone, int offset);
 float CalcBatteryVoltage();
@@ -38,18 +39,38 @@ static uint32_t UpdateButtons()
 {
     uint32_t temp = 0;
     gpio_set_level(SH_LD_PIN, 0); // 数据锁存
-    esp_rom_delay_us(2);
+    esp_rom_delay_us(4);
     gpio_set_level(SH_LD_PIN, 1); // 数据锁存
-    esp_rom_delay_us(2);
+    esp_rom_delay_us(4);
     for (int i = 0; i < 16; i++)
     {
         gpio_set_level(CLK_PIN, 1);
-        esp_rom_delay_us(2); // 数据稳定时间
+        esp_rom_delay_us(4); // 数据稳定时间
         temp = temp | (gpio_get_level(QH_PIN) << i);
         gpio_set_level(CLK_PIN, 0);
-        esp_rom_delay_us(2);
+        esp_rom_delay_us(4);
     }
     return temp;
+}
+
+int Process(int adc_value, int dead_zone, int offset)
+{
+    int v = adc_value + offset; // 注意这里是 + offset
+    int center = 0x7FF;         // 恒定中心点 2047
+
+    // 死区
+    if (v < center + dead_zone && v > center - dead_zone)
+        return 0;
+
+    // 计算偏移值，不进行归一化
+    int out;
+    if (v > center)
+        out = v - center - dead_zone;
+    else
+        out = v - center + dead_zone;
+
+    // 反转方向（加负号）
+    return -out;
 }
 
 void default_remote_state_flush(const int *rockers, const uint16_t key,void* user_data)
@@ -57,17 +78,21 @@ void default_remote_state_flush(const int *rockers, const uint16_t key,void* use
     PackControl_t *remoteInfo = (PackControl_t *)user_data;
     static float rocker_raw_value[4];
 
-    rocker_raw_value[0] = NormalizationRocker(rockers[0], 80, -20);
-    rocker_raw_value[1] = NormalizationRocker(rockers[1], 80, -90);
-    rocker_raw_value[2] = NormalizationRocker(rockers[2], 80, 100);
-    rocker_raw_value[3] = NormalizationRocker(rockers[3], 80, -10);
+    rocker_raw_value[0] = Process(rockers[0], 120, -20);
+    rocker_raw_value[1] = Process(rockers[1], 120, -75);
+    rocker_raw_value[2] = Process(rockers[2], 120, 70);
+    rocker_raw_value[3] = Process(rockers[3], 120, -5);
+    static float rocker_last[4] = {0};
     for (int i = 0; i < 4; i++)
     {
-        rocker_raw_value[i] = 0.21f * rocker_raw_value[i] + (1.0f - 0.21f) * rocker_raw_value[i];
-        remoteInfo->rocker[i] = rocker_raw_value[0];
+        rocker_raw_value[i] = 0.21f * rocker_raw_value[i] + (1.0f - 0.21f) * rocker_last[i];
+        rocker_last[i] = rocker_raw_value[i];   // 更新历史值
+        remoteInfo->rocker[i] = rocker_raw_value[i];
     }
+    
     remoteInfo->Key = key;
-    asyn_comm_send_pack_nak((uint8_t *)user_data, PACK_CONTROL_CMD, sizeof(PackControl_t));
+    printf("update\r\n");
+    asyn_comm_send_pack_nak((uint8_t *)remoteInfo, PACK_CONTROL_CMD, sizeof(PackControl_t));
 }
 
 static PackControl_t remoteInfo;
@@ -96,14 +121,10 @@ void CoreTask(void *param) // 遥控器核心任务
         rocker_adc_value[2] = adc1_get_raw(RIGHT_ROCKER_X); // 读取ADC值
         rocker_adc_value[3] = adc1_get_raw(RIGHT_ROCKER_Y); // 读取ADC值
         buttons_state=UpdateButtons();
-
         //遥控器状态刷新
         kRemoteStateFlushFunc(rocker_adc_value,buttons_state,kRemoteStateFlushUserData);
-
         //电池电量更新
         battery_voltage = (1.0f - battery_alpha) * CalcBatteryVoltage() + battery_alpha * battery_voltage;
-
-        //板载状态指示灯更新
 
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(20));
     }
@@ -159,32 +180,13 @@ float NormalizationRocker(int adc_value, int dead_zone, int offset)
     return out;
 }
 
-void sys_setup()
-{
-    gpio_config_t io_conf = {
-        .intr_type = GPIO_INTR_DISABLE,
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .pin_bit_mask = 1ULL << PIN_NUM_POWER_ENABLE,
-    };
-    gpio_config(&io_conf);
-    gpio_set_level(PIN_NUM_POWER_ENABLE, 1);
-}
-
-void sys_shutdown()
-{
-    gpio_set_level(PIN_NUM_POWER_ENABLE, 0);
-}
-
 void BatteryADCInit()
 {
     adc2_config_channel_atten(BATTERY_INPUT_CHANNEL, ADC_ATTEN_DB_12); // 测量电池电压
 }
-
+int battery_adc_raw_value = 0;
 float CalcBatteryVoltage()
 {
-    int battery_adc_raw_value = 0;
     adc2_get_raw(BATTERY_INPUT_CHANNEL, ADC_WIDTH_BIT_12, &battery_adc_raw_value);
     float voltage = battery_adc_raw_value;
     return 0.0017f * voltage + 0.0946f;

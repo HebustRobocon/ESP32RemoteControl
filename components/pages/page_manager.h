@@ -14,8 +14,6 @@
 #include "mylist.h"
 #include "dataFrame.h"
 
-typedef struct PagePort_t;
-
 typedef void(*PageCreateCb)(void* user_data);
 
 typedef struct{
@@ -37,7 +35,7 @@ extern uint8_t _ui_table_end;
  */
 #define UI_PAGE_REGISTER(name_str, create_cb) \
     const PagePort_t UI_CONCAT_EVAL(THIS_PAGE_ID, _page_port) \
-    __attribute__((used, retain, section("ui_table"), aligned(4))) = { \
+    __attribute__((used, section("ui_table"), aligned(4))) = { \
         .page_name = name_str, \
         .create = create_cb \
     }

@@ -3,7 +3,6 @@
 
 void lw_page_create(void *user_data);
 
-UI_PAGE_REGISTER("lwpage", lw_page_create);
 static uint8_t lw_page_created_flag = 0;
 static char lw_info_str[32];
 
@@ -30,8 +29,6 @@ void lw_page_create(void *user_data)
     if(lw_page_created_flag)
         return;
     lw_page_created_flag = 1;
-
-    
 
     //创建标签显示信息
     lv_obj_t *info_label = lv_label_create(lv_screen_active());

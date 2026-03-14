@@ -145,7 +145,6 @@ void SendDataPackTask(void *param)
     while (1)
     {
         xQueueReceive(send_req_queue_handle, &req, portMAX_DELAY);
-        printf("执行发送任务\r\n");
         uint32_t pack_id = g_pack_id++;
 
         if (req.size + PACK_OVERHEAD > PACK_MAX_SIZE) {

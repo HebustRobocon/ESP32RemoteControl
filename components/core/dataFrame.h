@@ -20,8 +20,8 @@
 
 #define Right_Switch_Up     0x02
 #define Right_Switch_Down   0x04
-#define Right_Key_Up        0x08
-#define Right_Key_Left      0x10
+#define Right_Key_Up        0x10
+#define Right_Key_Left      0x08
 #define Right_Key_Right     0x20
 #define Right_Key_Down      0x40
 #define Left_Broadside_Key  0x80

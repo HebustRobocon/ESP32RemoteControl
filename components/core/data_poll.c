@@ -1,6 +1,5 @@
 #include "data_poll.h"
 
-
 /* 计算单个 block 的跨度 */
 inline static uint32_t poll_block_stride(const DataPoll_t *handle)
 {
