@@ -189,7 +189,7 @@ float CalcBatteryVoltage()
 {
     adc2_get_raw(BATTERY_INPUT_CHANNEL, ADC_WIDTH_BIT_12, &battery_adc_raw_value);
     float voltage = battery_adc_raw_value;
-    return 0.0017f * voltage + 0.0946f;
+    return 0.001664f * voltage + 0.2467f;
 }
 
 float get_battery_voltage()
@@ -197,22 +197,25 @@ float get_battery_voltage()
     return battery_voltage;
 }
 
-float Get_Battery_level(float Battery_voltage)
+float Get_Battery_level(float x)
 {
-     // 标准化
-    float x_norm = (Battery_voltage - 3.852) / 0.1979;
+    if(x>4.16)
+        return 100.0f;
+    if(x<3.58)
+        return 0.0f;
+    // 归一化
+    float xn = (x - 3.861f) / 0.1846f;
 
-    // 多项式计算
-    float y = 5.226 * pow(x_norm, 4)
-             - 4.407 * pow(x_norm, 3)
-             - 17.25 * pow(x_norm, 2)
-             + 42.71 * x_norm
-             + 61.18;
+    // Poly5 系数
+    float p1 = -3.099f;
+    float p2 = 7.096f;
+    float p3 = 5.464f;
+    float p4 = -21.73f;
+    float p5 = 33.52f;
+    float p6 = 65.03f;
 
-    // 判段逻辑
-    if (y > 100.0) {
-        y = 100.0;
-    }
+    // Horner 法则计算多项式
+    float y = (((((p1 * xn + p2) * xn + p3) * xn + p4) * xn + p5) * xn + p6);
 
     return y;
 }

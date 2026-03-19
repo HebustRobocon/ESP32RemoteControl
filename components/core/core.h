@@ -22,6 +22,7 @@ void RemoteCoreInit();  //遥控器底层驱动组件初始化
  */
 float get_battery_voltage();
 float Get_Battery_level(float Battery_voltage);
+float CalcBatteryVoltage();
 
 /**
  * @brief 设置遥控器状态更新函数。按键/摇杆状态在不断更新，因此有一个FreeRTOS任务会不断扫描他们的状态。

@@ -1462,7 +1462,7 @@
     #ifdef CONFIG_LV_FONT_MONTSERRAT_24
         #define LV_FONT_MONTSERRAT_24 CONFIG_LV_FONT_MONTSERRAT_24
     #else
-        #define LV_FONT_MONTSERRAT_24 0
+        #define LV_FONT_MONTSERRAT_24 1
     #endif
 #endif
 #ifndef LV_FONT_MONTSERRAT_26
@@ -1497,7 +1497,7 @@
     #ifdef CONFIG_LV_FONT_MONTSERRAT_34
         #define LV_FONT_MONTSERRAT_34 CONFIG_LV_FONT_MONTSERRAT_34
     #else
-        #define LV_FONT_MONTSERRAT_34 0
+        #define LV_FONT_MONTSERRAT_34 1
     #endif
 #endif
 #ifndef LV_FONT_MONTSERRAT_36
@@ -1546,7 +1546,7 @@
     #ifdef CONFIG_LV_FONT_MONTSERRAT_48
         #define LV_FONT_MONTSERRAT_48 CONFIG_LV_FONT_MONTSERRAT_48
     #else
-        #define LV_FONT_MONTSERRAT_48 0
+        #define LV_FONT_MONTSERRAT_48 1
     #endif
 #endif
 
@@ -1569,14 +1569,14 @@
     #ifdef CONFIG_LV_FONT_SIMSUN_14_CJK
         #define LV_FONT_SIMSUN_14_CJK CONFIG_LV_FONT_SIMSUN_14_CJK
     #else
-        #define LV_FONT_SIMSUN_14_CJK            0  /*1000 most common CJK radicals*/
+        #define LV_FONT_SIMSUN_14_CJK            1  /*1000 most common CJK radicals*/
     #endif
 #endif
 #ifndef LV_FONT_SIMSUN_16_CJK
     #ifdef CONFIG_LV_FONT_SIMSUN_16_CJK
         #define LV_FONT_SIMSUN_16_CJK CONFIG_LV_FONT_SIMSUN_16_CJK
     #else
-        #define LV_FONT_SIMSUN_16_CJK            0  /*1000 most common CJK radicals*/
+        #define LV_FONT_SIMSUN_16_CJK            1  /*1000 most common CJK radicals*/
     #endif
 #endif
 
