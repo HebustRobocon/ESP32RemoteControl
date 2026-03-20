@@ -37,6 +37,7 @@ int ProcessRocker(int adc_value, int dead_zone, int offset)
 
 static lv_obj_t *rocker_label;
 static lv_obj_t *battery_label;
+static lv_obj_t *keys_state_label;
 static void main_page_remote_state_flush_func(const int *rocker, const uint16_t key,void* user_data)
 {
     static int update_cnt=0;
@@ -46,8 +47,7 @@ static void main_page_remote_state_flush_func(const int *rocker, const uint16_t 
     char out_str[8]={0};
     sprintf(out_str,"0x%X",key);
     sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
-    lv_obj_t *_label=(lv_obj_t *)user_data;
-    lv_label_set_text(_label, out_str);
+    lv_label_set_text(keys_state_label, out_str);
     lv_label_set_text(battery_label, battery_show_str);
 
     int rocker_processed[4];
@@ -81,7 +81,7 @@ void main_page_create(void *user_data)
     //硬件状态更新任务初始化
     RemoteCoreInit();
 
-    lv_obj_t *keys_state_label = lv_label_create(lv_screen_active());
+    keys_state_label = lv_label_create(lv_screen_active());
     lv_label_set_text(keys_state_label, "key:");
     lv_obj_align(keys_state_label, LV_ALIGN_TOP_MID, 0, 0);
     set_remote_flush_func(main_page_remote_state_flush_func,keys_state_label);
