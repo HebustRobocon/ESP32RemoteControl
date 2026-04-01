@@ -123,10 +123,10 @@ void RemoteCommInit(BadDataPackCb_t callback)
                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 
     QueueHandle_t uart_event_queue;
-    uart_driver_install(UART_NUM_1, 256, 256, 4, &uart_event_queue, 0);
+    uart_driver_install(UART_NUM_1, 512, 512, 4, &uart_event_queue, 0);
 
-    xTaskCreate(SendDataPackTask, "uartSendTask", 2048, NULL, 5, NULL);
-    xTaskCreate(ReceiveDataPackTask, "uartRecvTask", 2048, callback, 5, NULL);
+    xTaskCreate(SendDataPackTask, "uartSendTask", 4096, NULL, 4, NULL);
+    xTaskCreate(ReceiveDataPackTask, "uartRecvTask", 4096, callback, 4, NULL);
     xTaskCreate(ACKTimeoutCheckTask, "uartackTask", 2048, NULL, 3, NULL);
 }
 
@@ -205,6 +205,13 @@ void SendDataPackTask(void *param)
     }
 }
 
+static void flush_uart_buffer(void)
+{
+    uint8_t dummy[64];
+    // 清空UART接收缓冲区
+    while (uart_read_bytes(UART_NUM_1, dummy, sizeof(dummy), pdMS_TO_TICKS(1)) > 0);
+}
+
 void ReceiveDataPackTask(void *param)
 {
     ListIterator_t it;
@@ -222,6 +229,7 @@ void ReceiveDataPackTask(void *param)
             if (got != 4) {
                 if(param)
                     ((BadDataPackCb_t)param)(COMM_BAD_ACK);
+                flush_uart_buffer();
                 continue;
             }
 
@@ -246,6 +254,7 @@ void ReceiveDataPackTask(void *param)
         {
             if(param)
                 ((BadDataPackCb_t)param)(COMM_BAD_HEAD);
+            flush_uart_buffer();
             continue;
         }
 
@@ -256,6 +265,7 @@ void ReceiveDataPackTask(void *param)
         if (size_got != 1) {
             if(param)
                 ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            flush_uart_buffer();
             continue;
         }
 
@@ -263,6 +273,7 @@ void ReceiveDataPackTask(void *param)
         if (data_len > PACK_MAX_SIZE || data_len < PACK_OVERHEAD) {
             if(param)
                 ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            flush_uart_buffer();
             continue;
         }
 
@@ -272,6 +283,7 @@ void ReceiveDataPackTask(void *param)
         if (payload_got != (int)payload_to_read) {
             if(param)
                 ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            flush_uart_buffer();
             continue;
         }
 
@@ -282,6 +294,7 @@ void ReceiveDataPackTask(void *param)
         if (sum_got != 1) {
             if(param)
                 ((BadDataPackCb_t)param)(COMM_BAD_LEN);
+            flush_uart_buffer();
             continue;
         }
 
@@ -289,6 +302,7 @@ void ReceiveDataPackTask(void *param)
         {
             if(param)
                 ((BadDataPackCb_t)param)(COMM_BAD_SUM);
+            flush_uart_buffer();
             continue;
         }
 

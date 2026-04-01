@@ -78,10 +78,10 @@ void default_remote_state_flush(const int *rockers, const uint16_t key,void* use
     PackControl_t *remoteInfo = (PackControl_t *)user_data;
     static float rocker_raw_value[4];
 
-    rocker_raw_value[0] = Process(rockers[0], 120, -20);
-    rocker_raw_value[1] = Process(rockers[1], 120, -75);
-    rocker_raw_value[2] = Process(rockers[2], 120, 70);
-    rocker_raw_value[3] = Process(rockers[3], 120, -5);
+    rocker_raw_value[0] = Process(rockers[0], 70, 0);
+    rocker_raw_value[1] = Process(rockers[1], 70, 0);
+    rocker_raw_value[2] = Process(rockers[2], 70, 0);
+    rocker_raw_value[3] = Process(rockers[3], 70, 20);
     static float rocker_last[4] = {0};
     for (int i = 0; i < 4; i++)
     {

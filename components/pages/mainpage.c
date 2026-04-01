@@ -2,6 +2,9 @@
 #include "lvgl/lvgl.h"
 #include "math.h"
 #include "lvgl/lv_conf.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 
 void main_page_create(void *user_data);
 UI_PAGE_REGISTER("main_page", main_page_create);
@@ -38,36 +41,76 @@ int ProcessRocker(int adc_value, int dead_zone, int offset)
 static lv_obj_t *rocker_label;
 static lv_obj_t *battery_label;
 static lv_obj_t *keys_state_label;
+static int remote_rocker[4] = {0};
+static uint16_t remote_key = 0;
+static SemaphoreHandle_t remote_data_semaphore = NULL;
+static volatile uint8_t labels_created = 0;
+
+static void remote_state_task(void *pvParameters)
+{
+    TickType_t last_wake_time = xTaskGetTickCount();
+    const TickType_t update_interval = pdMS_TO_TICKS(20); // 20ms更新间隔
+    
+    while(1)
+    {
+        // 等待新的远程数据或超时
+        if(remote_data_semaphore != NULL)
+        {
+            xSemaphoreTake(remote_data_semaphore, update_interval);
+        }
+        else
+        {
+            // 信号量未创建，直接延迟
+            vTaskDelay(update_interval);
+            continue;
+        }
+        
+        // 只有当标签对象创建后才更新UI
+        if(labels_created)
+        {
+            // 无论是否有新数据，都按固定频率处理
+            xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
+            char out_str[8]={0};
+            sprintf(out_str,"0x%X",remote_key);
+            sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
+            lv_label_set_text(keys_state_label, out_str);
+            lv_label_set_text(battery_label, battery_show_str);
+
+            int rocker_processed[4];
+            rocker_processed[0] = ProcessRocker(remote_rocker[0], 70, 0);
+            rocker_processed[1] = ProcessRocker(remote_rocker[1], 70, 0);
+            rocker_processed[2] = ProcessRocker(remote_rocker[2], 70, 0);
+            rocker_processed[3] = ProcessRocker(remote_rocker[3], 70, 20);
+            
+            char rocker_str[64]={0};
+            sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],-rocker_processed[2],-rocker_processed[3]);
+            lv_label_set_text(rocker_label, rocker_str);
+            static PackControl_t remoteInfo;
+            remoteInfo.rocker[0] = rocker_processed[0];
+            remoteInfo.rocker[1] = rocker_processed[1];
+            remoteInfo.rocker[2] = rocker_processed[2];
+            remoteInfo.rocker[3] = rocker_processed[3];
+            remoteInfo.Key = remote_key;
+            xSemaphoreGive(get_screen_mutex());
+            asyn_comm_send_pack_nak((uint8_t *)&remoteInfo,0x01,sizeof(remoteInfo));
+        }
+        
+        // 使用vTaskDelayUntil确保固定频率
+        vTaskDelayUntil(&last_wake_time, update_interval);
+    }
+}
+
 static void main_page_remote_state_flush_func(const int *rocker, const uint16_t key,void* user_data)
 {
-    static int update_cnt=0;
-    if((update_cnt++)%10)
-        return;
-    xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
-    char out_str[8]={0};
-    sprintf(out_str,"0x%X",key);
-    sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
-    lv_label_set_text(keys_state_label, out_str);
-    lv_label_set_text(battery_label, battery_show_str);
-
-    int rocker_processed[4];
-    rocker_processed[0] = ProcessRocker(rocker[0], 250, 0);
-    rocker_processed[1] = ProcessRocker(rocker[1], 200, 0);
-    rocker_processed[2] = ProcessRocker(rocker[2], 200, 0);
-    rocker_processed[3] = ProcessRocker(rocker[3], 200, 0);
+    // 复制远程数据到共享变量
+    memcpy(remote_rocker, rocker, sizeof(remote_rocker));
+    remote_key = key;
     
-    char rocker_str[32]={0};
-    sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],rocker_processed[2],rocker_processed[3]);
-    lv_label_set_text(rocker_label, rocker_str);
-    static PackControl_t remoteInfo;
-    remoteInfo.rocker[0] = rocker_processed[0];
-    remoteInfo.rocker[1] = rocker_processed[1];
-    remoteInfo.rocker[2] = rocker_processed[2];
-    remoteInfo.rocker[3] = rocker_processed[3];
-    remoteInfo.Key = key;
-    xSemaphoreGive(get_screen_mutex());
-    asyn_comm_send_pack_nak((uint8_t *)&remoteInfo,0x01,sizeof(remoteInfo));
-    printf("1\r\n");
+    // 通知任务有新数据可用
+    if(remote_data_semaphore != NULL)
+    {
+        xSemaphoreGive(remote_data_semaphore);
+    }
 }
 
 void main_page_create(void *user_data)
@@ -75,6 +118,22 @@ void main_page_create(void *user_data)
     if (main_page_created_flag)
         return;
     main_page_created_flag = 1;
+
+    // 创建信号量用于远程数据同步
+    remote_data_semaphore = xSemaphoreCreateBinary();
+    if(remote_data_semaphore == NULL)
+    {
+        // 处理信号量创建失败
+        printf("Failed to create remote data semaphore\n");
+    }
+    
+    // 创建远程状态任务，优先级低于CoreTask
+    BaseType_t task_create_result = xTaskCreate(remote_state_task, "remote_state_task", 4096, NULL, 4, NULL);
+    if(task_create_result != pdPASS)
+    {
+        // 处理任务创建失败
+        printf("Failed to create remote state task\n");
+    }
 
     //通信模块初始化
     RemoteCommInit(NULL);
@@ -94,6 +153,9 @@ void main_page_create(void *user_data)
     lv_label_set_text(battery_label, "Battery voltage:");
     lv_obj_align(battery_label, LV_ALIGN_TOP_MID, 0, 150);
     set_remote_flush_func(main_page_remote_state_flush_func,battery_label);
+    
+    // 所有标签创建完成，设置标志
+    labels_created = 1;
 
     lv_obj_t *L_label = lv_label_create(lv_screen_active());
     lv_label_set_text(L_label, "L");
