@@ -47,4 +47,13 @@ RemoteStateFlush_t get_remote_flush_func();                         //得到当�
  */
 void get_remote_state(int rocker_raw_data[4],uint16_t* key_data);
 
+/**
+ * @brief 处理摇杆ADC值，计算输出值
+ * @param adc_value 摇杆ADC原始值
+ * @param dead_zone 死区大小
+ * @param offset 偏移量
+ * @return 处理后的摇杆值
+ */
+int Process(int adc_value, int dead_zone, int offset);
+
 #endif

@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "core.h"
 
 void main_page_create(void *user_data);
 UI_PAGE_REGISTER("main_page", main_page_create);
@@ -18,25 +19,7 @@ static void battery_voltage_show_cb(lv_timer_t *timer)
     lv_label_set_text_static(label, battery_show_str);
 }
 
-int ProcessRocker(int adc_value, int dead_zone, int offset)
-{
-    int v = adc_value + offset; // 注意这里是 + offset
-    int center = 0x7FF;         // 恒定中心点 2047
 
-    // 死区
-    if (v < center + dead_zone && v > center - dead_zone)
-        return 0;
-
-    // 计算偏移值，不进行归一化
-    int out;
-    if (v > center)
-        out = v - center - dead_zone;
-    else
-        out = v - center + dead_zone;
-
-    // 反转方向（加负号）
-    return -out;
-}
 
 static lv_obj_t *rocker_label;
 static lv_obj_t *battery_label;
@@ -76,11 +59,8 @@ static void remote_state_task(void *pvParameters)
             lv_label_set_text(keys_state_label, out_str);
             lv_label_set_text(battery_label, battery_show_str);
 
-            int rocker_processed[4];
-            rocker_processed[0] = ProcessRocker(remote_rocker[0], 70, 0);
-            rocker_processed[1] = ProcessRocker(remote_rocker[1], 70, 0);
-            rocker_processed[2] = ProcessRocker(remote_rocker[2], 70, 0);
-            rocker_processed[3] = ProcessRocker(remote_rocker[3], 70, 20);
+            // 直接使用处理后的值，不需要再计算
+            int *rocker_processed = (int *)remote_rocker;
             
             char rocker_str[64]={0};
             sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],-rocker_processed[2],-rocker_processed[3]);
@@ -102,11 +82,12 @@ static void remote_state_task(void *pvParameters)
 
 static void main_page_remote_state_flush_func(const int *rocker, const uint16_t key,void* user_data)
 {
-    // 复制远程数据到共享变量
+    // 直接使用传递过来的处理后的值，不需要再计算
+    // 复制数据到全局变量
     memcpy(remote_rocker, rocker, sizeof(remote_rocker));
     remote_key = key;
     
-    // 通知任务有新数据可用
+    // 通知远程状态任务有新数据
     if(remote_data_semaphore != NULL)
     {
         xSemaphoreGive(remote_data_semaphore);
