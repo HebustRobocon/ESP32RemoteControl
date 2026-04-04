@@ -19,8 +19,6 @@ static void battery_voltage_show_cb(lv_timer_t *timer)
     lv_label_set_text_static(label, battery_show_str);
 }
 
-
-
 static lv_obj_t *rocker_label;
 static lv_obj_t *battery_label;
 static lv_obj_t *keys_state_label;
@@ -63,7 +61,7 @@ static void remote_state_task(void *pvParameters)
             int *rocker_processed = (int *)remote_rocker;
             
             char rocker_str[64]={0};
-            sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],-rocker_processed[2],-rocker_processed[3]);
+            sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],rocker_processed[2],rocker_processed[3]);
             lv_label_set_text(rocker_label, rocker_str);
             static PackControl_t remoteInfo;
             remoteInfo.rocker[0] = rocker_processed[0];

@@ -163,8 +163,6 @@ void SendDataPackTask(void *param)
         send_buffer[7 + req.size] = SumCheck(req.size + 7, send_buffer);
 
         xSemaphoreTake(uart_tx_mutex, portMAX_DELAY);
-        for(int i=0;i<req.size + PACK_OVERHEAD;i++)
-            printf("%x",send_buffer[i]);
         uart_write_bytes(UART_NUM_1, (char *)send_buffer, req.size + PACK_OVERHEAD);
         xSemaphoreGive(uart_tx_mutex);
 
