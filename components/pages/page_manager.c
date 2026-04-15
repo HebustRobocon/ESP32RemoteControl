@@ -49,6 +49,11 @@ uint32_t page_switch(const char* next_page_name,void *next_page_create_param,voi
         printf("Checking page %d: %s\r\n", i, page->page_name);
         if(strcmp(next_page_name, page->page_name)==0) //匹配到目标页面
         {
+            if (page_create_info_index >= sizeof(page_create_info_stack) / sizeof(page_create_info_stack[0])) {
+                printf("page_switch failed: page stack overflow\r\n");
+                return 0;
+            }
+
             printf("Found page: %s\r\n", next_page_name);
             page_create_info_stack[page_create_info_index].port_addr=this_page_port;
             page_create_info_stack[page_create_info_index].page_create_param=this_page_create_param;
@@ -70,8 +75,13 @@ uint32_t return_last_page()
 {
     if(!page_create_info_index)
         return 0;
-    this_page_port=page_create_info_stack[page_create_info_index].port_addr;
-    this_page_port->create(page_create_info_stack[page_create_info_index].page_create_param);   //执行创建上一个页面
+
     page_create_info_index--;
+    this_page_port=page_create_info_stack[page_create_info_index].port_addr;
+    if (!this_page_port) {
+        printf("return_last_page failed: saved page port is NULL\r\n");
+        return 0;
+    }
+    this_page_port->create(page_create_info_stack[page_create_info_index].page_create_param);   //执行创建上一个页面
     return 1;
 }
