@@ -335,7 +335,7 @@ void ReceiveDataPackTask(void *param)
 
 void ACKTimeoutCheckTask(void *param)
 {
-    BaseType_t last_wake_time = xTaskGetTickCount();
+    TickType_t last_wake_time = xTaskGetTickCount();
     while (1)
     {
         xSemaphoreTake(send_ack_blocks_mutex, portMAX_DELAY);

@@ -1,4 +1,8 @@
 #include "page_manager.h"
+#include "lvgl.h"
+
+// 当前页面的画布容器
+static lv_obj_t *current_page_canvas = NULL;
 
 //最多支持16个页面递归
 typedef struct{
@@ -55,6 +59,13 @@ uint32_t page_switch(const char* next_page_name,void *next_page_create_param,voi
             page_create_info_index++;
 
             this_page_port=page;
+            printf("Creating new page canvas\r\n");
+            // 创建新的画布容器，覆盖整个屏幕
+            current_page_canvas = lv_obj_create(lv_screen_active());
+            lv_obj_set_size(current_page_canvas, lv_pct(100), lv_pct(100));
+            lv_obj_set_pos(current_page_canvas, 0, 0);
+            // 设置画布为当前活动对象，新创建的UI元素会自动添加到这个画布中
+            lv_scr_load(current_page_canvas);
             printf("Calling create function for page: %s\r\n", next_page_name);
             this_page_port->create(next_page_create_param);
             printf("Page created successfully\r\n");
@@ -71,6 +82,15 @@ uint32_t return_last_page()
     if(!page_create_info_index)
         return 0;
     this_page_port=page_create_info_stack[page_create_info_index].port_addr;
+    printf("Removing current page canvas\r\n");
+    // 删除当前画布，露出下面的页面
+    if(current_page_canvas != NULL)
+    {
+        lv_obj_del(current_page_canvas);
+        current_page_canvas = NULL;
+    }
+    // 重新加载主屏幕，确保下面的页面可见
+    lv_scr_load(lv_screen_active());
     this_page_port->create(page_create_info_stack[page_create_info_index].page_create_param);   //执行创建上一个页面
     page_create_info_index--;
     return 1;

@@ -11,9 +11,13 @@ static char lw_info_str[32];
 static void lw_btn_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
+    printf("LW Page button event code: %d\r\n", code);
     if(code == LV_EVENT_CLICKED)
     {
-       page_switch("main_page", NULL, NULL);
+        printf("LW Page button clicked, returning to last page\r\n");
+        // 执行返回上一个页面
+        uint32_t result = return_last_page();
+        printf("return_last_page result: %lu\r\n", result);
     }
 }
 
