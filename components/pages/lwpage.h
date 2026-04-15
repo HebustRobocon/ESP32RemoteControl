@@ -1,5 +1,5 @@
-#ifndef __MAINPAGE_H__
-#define __MAINPAGE_H__
+#ifndef __LWPAGE_H__
+#define __LWPAGE_H__
 
 #include "page_manager.h"
 

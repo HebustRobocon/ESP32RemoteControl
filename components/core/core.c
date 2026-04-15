@@ -122,13 +122,13 @@ void CoreTask(void *param) // 遥控器核心任务
         rocker_adc_value[2] = adc1_get_raw(RIGHT_ROCKER_X); // 读取ADC值
         rocker_adc_value[3] = adc1_get_raw(RIGHT_ROCKER_Y); // 读取ADC值
         buttons_state=UpdateButtons();
-        printf("rocker_adc_value[0]:%d,rocker_adc_value[1]:%d,rocker_adc_value[2]:%d,rocker_adc_value[3]:%d\n",rocker_adc_value[0],rocker_adc_value[1],rocker_adc_value[2],rocker_adc_value[3]);
+        //printf("rocker_adc_value[0]:%d,rocker_adc_value[1]:%d,rocker_adc_value[2]:%d,rocker_adc_value[3]:%d\n",rocker_adc_value[0],rocker_adc_value[1],rocker_adc_value[2],rocker_adc_value[3]);
         // 计算摇杆值
         int rocker_raw_value[4];
-        rocker_raw_value[0] = Process(rocker_adc_value[0], 70, 0);
-        rocker_raw_value[1] = Process(rocker_adc_value[1], 70, 0); 
-        rocker_raw_value[2] = Process(rocker_adc_value[2], 70, 0);
-        rocker_raw_value[3] = Process(rocker_adc_value[3], 70, 0);
+        rocker_raw_value[0] = Process(rocker_adc_value[0], 450, 0);
+        rocker_raw_value[1] = Process(rocker_adc_value[1], 450, 0);
+        rocker_raw_value[2] = Process(rocker_adc_value[2], 450, 0);
+        rocker_raw_value[3] = Process(rocker_adc_value[3], 450, 0);
         
         //遥控器状态刷新 - 传递处理后的摇杆值
         kRemoteStateFlushFunc(rocker_raw_value,buttons_state,kRemoteStateFlushUserData);

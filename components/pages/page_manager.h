@@ -54,7 +54,7 @@ inline PagePort_t *get_pages_from_index(const uint32_t index)
     if (index >= num) {
         return NULL;
     }
-    return (PagePort_t *)((&_ui_table_start) + index);
+    return (PagePort_t *)(&_ui_table_start) + index;
 }
 
 /**

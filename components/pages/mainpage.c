@@ -78,6 +78,19 @@ static void remote_state_task(void *pvParameters)
     }
 }
 
+// 按钮事件回调 - 跳转到lwpage
+static void lwpage_btn_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    printf("Button event code: %d\r\n", code);
+    if(code == LV_EVENT_CLICKED)
+    {
+        printf("Button clicked, switching to lw_page\r\n");
+        uint32_t result = page_switch("lw_page", NULL, NULL);
+        printf("page_switch result: %lu\r\n", result);
+    }
+}
+
 static void main_page_remote_state_flush_func(const int *rocker, const uint16_t key,void* user_data)
 {
     // 直接使用传递过来的处理后的值，不需要再计算
@@ -175,4 +188,14 @@ void main_page_create(void *user_data)
     lv_timer_t *battery_voltage_show_timer=lv_timer_create(battery_voltage_show_cb,200,mylabel);
     lv_timer_enable(battery_voltage_show_timer);
     lv_obj_align(mylabel, LV_ALIGN_TOP_MID, 0, 100);
+    
+    // 创建跳转到lwpage的按钮
+    lv_obj_t *lwpage_button = lv_btn_create(lv_screen_active());
+    lv_obj_set_size(lwpage_button, 120, 60);
+    lv_obj_align(lwpage_button, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_add_event_cb(lwpage_button, lwpage_btn_event_cb, LV_EVENT_ALL, NULL);
+    
+    lv_obj_t *lwpage_btn_label = lv_label_create(lwpage_button);
+    lv_label_set_text(lwpage_btn_label, "LW Page");
+    lv_obj_align(lwpage_btn_label, LV_ALIGN_CENTER, 0, 0);
 }

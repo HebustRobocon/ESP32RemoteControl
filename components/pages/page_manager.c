@@ -40,20 +40,28 @@ QueueHandle_t get_screen_mutex()
 //切换到目标页面，同时将本页面重新创建信息入栈
 uint32_t page_switch(const char* next_page_name,void *next_page_create_param,void* this_page_create_param)
 {
-    int page_num=get_pages_num();
+    printf("page_switch called with page name: %s\r\n", next_page_name);
+    uint32_t page_num=get_pages_num();
+    printf("Total pages: %lu\r\n", page_num);
     for(int i=0;i<page_num;i++)
     {
-        if(strcmp(next_page_name,get_pages_from_index(i)->page_name)==0) //匹配到目标页面
+        PagePort_t *page = get_pages_from_index(i);
+        printf("Checking page %d: %s\r\n", i, page->page_name);
+        if(strcmp(next_page_name, page->page_name)==0) //匹配到目标页面
         {
+            printf("Found page: %s\r\n", next_page_name);
             page_create_info_stack[page_create_info_index].port_addr=this_page_port;
             page_create_info_stack[page_create_info_index].page_create_param=this_page_create_param;
             page_create_info_index++;
 
-            this_page_port=get_pages_from_index(i);
+            this_page_port=page;
+            printf("Calling create function for page: %s\r\n", next_page_name);
             this_page_port->create(next_page_create_param);
+            printf("Page created successfully\r\n");
             return 1;
         }
     }
+    printf("Page not found: %s\r\n", next_page_name);
     return 0;
 }
 

@@ -23,7 +23,7 @@ foreach(src ${PAGE_SRCS})
             COMPILE_DEFINITIONS "THIS_PAGE_ID=${file_id}")
 
         # 注入链接器强制拉取参数
-        target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,-u,${target_symbol}")
+        target_link_options(${COMPONENT_LIB} PUBLIC "-Wl,-u,${target_symbol}")
         
         message(STATUS "UI Auto-Link [Found]: ${file_id} -> ${target_symbol}")
     else()
