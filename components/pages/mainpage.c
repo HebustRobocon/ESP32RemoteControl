@@ -82,7 +82,7 @@ static void remote_state_task(void *pvParameters)
 static void lwpage_btn_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    printf("Button event code: %d\r\n", code);
+    //printf("Button event code: %d\r\n", code);
     if(code == LV_EVENT_CLICKED)
     {
         printf("Button clicked, switching to lw_page\r\n");
@@ -193,7 +193,7 @@ void main_page_create(void *user_data)
     lv_obj_t *lwpage_button = lv_btn_create(lv_screen_active());
     lv_obj_set_size(lwpage_button, 120, 60);
     lv_obj_align(lwpage_button, LV_ALIGN_BOTTOM_MID, 0, -20);
-    lv_obj_add_event_cb(lwpage_button, lwpage_btn_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(lwpage_button, lwpage_btn_event_cb, LV_EVENT_CLICKED, NULL);
     
     lv_obj_t *lwpage_btn_label = lv_label_create(lwpage_button);
     lv_label_set_text(lwpage_btn_label, "LW Page");

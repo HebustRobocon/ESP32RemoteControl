@@ -81,17 +81,29 @@ uint32_t return_last_page()
 {
     if(!page_create_info_index)
         return 0;
+    // 先递减索引，再访问栈元素，避免越界
+    page_create_info_index--;
     this_page_port=page_create_info_stack[page_create_info_index].port_addr;
+    if (!this_page_port) {
+        printf("return_last_page failed: saved page port is NULL\r\n");
+        return 0;
+    }
     printf("Removing current page canvas\r\n");
     // 删除当前画布，露出下面的页面
     if(current_page_canvas != NULL)
     {
+        // 保存主屏幕的引用
+        lv_obj_t *main_screen = lv_screen_active();
+        // 删除当前画布
         lv_obj_del(current_page_canvas);
         current_page_canvas = NULL;
+        // 确保主屏幕仍然有效
+        if(main_screen != NULL)
+        {
+            // 重新加载主屏幕，确保下面的页面可见
+            lv_scr_load(main_screen);
+        }
     }
-    // 重新加载主屏幕，确保下面的页面可见
-    lv_scr_load(lv_screen_active());
     this_page_port->create(page_create_info_stack[page_create_info_index].page_create_param);   //执行创建上一个页面
-    page_create_info_index--;
     return 1;
 }
