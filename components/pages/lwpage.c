@@ -1,5 +1,9 @@
 #include "lwpage.h"
 #include "lvgl.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+extern TaskHandle_t remote_state_task_handle;
 
 void lw_page_create(void *user_data);
 UI_PAGE_REGISTER("lw_page", lw_page_create);
@@ -17,6 +21,10 @@ static void lw_btn_event_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     if(code == LV_EVENT_CLICKED)
     {
+        if(remote_state_task_handle != NULL)
+        {
+            vTaskResume(remote_state_task_handle);
+        }
         lv_timer_t *timer = lv_timer_create(lw_return_last_page_timer_cb, 1, NULL);
         if(timer) {
             lv_timer_set_repeat_count(timer, 1);

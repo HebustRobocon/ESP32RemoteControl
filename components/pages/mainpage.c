@@ -49,56 +49,52 @@ static void remote_state_task(void *pvParameters)
             continue;
         }
         
-        // 只有当标签对象创建后才更新UI
-        if(labels_created && keys_state_label && battery_label && rocker_label)
+        // 检查屏幕是否存在
+        lv_obj_t *scr = lv_screen_active();
+        if(scr == NULL)
         {
-            // 检查屏幕是否存在
-            lv_obj_t *scr = lv_screen_active();
-            if(scr == NULL)
-            {
-                // 没有屏幕，跳过UI更新
-                vTaskDelay(update_interval);
-                continue;
-            }
-            
-            // 检查标签是否仍然有效
-            if(!lv_obj_is_valid(keys_state_label) || !lv_obj_is_valid(battery_label) || !lv_obj_is_valid(rocker_label))
-            {
-                // 标签无效，跳过UI更新
-                vTaskDelay(update_interval);
-                continue;
-            }
-            
-            // 无论是否有新数据，都按固定频率处理
-            xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
-            // 再次检查标签是否仍然有效
-            if(lv_obj_is_valid(keys_state_label) && lv_obj_is_valid(battery_label) && lv_obj_is_valid(rocker_label))
-            {
-                char out_str[8]={0};
-                sprintf(out_str,"0x%X",remote_key);
-                sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
-                lv_label_set_text(keys_state_label, out_str);
-                lv_label_set_text(battery_label, battery_show_str);
-
-                // 直接使用处理后的值，不需要再计算
-                int *rocker_processed = (int *)remote_rocker;
-                
-                char rocker_str[64]={0};
-                sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],rocker_processed[2],rocker_processed[3]);
-                lv_label_set_text(rocker_label, rocker_str);
-            }
-            xSemaphoreGive(get_screen_mutex());
-            
-            // 发送数据，无论UI是否更新成功
-            static PackControl_t remoteInfo;
-            remoteInfo.rocker[0] = remote_rocker[0];
-            remoteInfo.rocker[1] = remote_rocker[1];
-            remoteInfo.rocker[2] = remote_rocker[2];
-            remoteInfo.rocker[3] = remote_rocker[3];
-            remoteInfo.Key = remote_key;
-            asyn_comm_send_pack_nak((uint8_t *)&remoteInfo,0x01,sizeof(remoteInfo));
+            // 没有屏幕，跳过UI更新
+            vTaskDelay(update_interval);
+            continue;
         }
         
+        // 检查标签是否仍然有效
+        if(!lv_obj_is_valid(keys_state_label) || !lv_obj_is_valid(battery_label) || !lv_obj_is_valid(rocker_label))
+        {
+            // 标签无效，跳过UI更新
+            vTaskDelay(update_interval);
+            continue;
+        }
+        
+        // 无论是否有新数据，都按固定频率处理
+        xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
+        // 再次检查标签是否仍然有效
+        if(lv_obj_is_valid(keys_state_label) && lv_obj_is_valid(battery_label) && lv_obj_is_valid(rocker_label))
+        {
+            char out_str[8]={0};
+            sprintf(out_str,"0x%X",remote_key);
+            sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
+            lv_label_set_text(keys_state_label, out_str);
+            lv_label_set_text(battery_label, battery_show_str);
+
+            // 直接使用处理后的值，不需要再计算
+            int *rocker_processed = (int *)remote_rocker;
+            
+            char rocker_str[64]={0};
+            sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],rocker_processed[2],rocker_processed[3]);
+            lv_label_set_text(rocker_label, rocker_str);
+        }
+        xSemaphoreGive(get_screen_mutex());
+        
+        // 发送数据，无论UI是否更新成功
+        static PackControl_t remoteInfo;
+        remoteInfo.rocker[0] = remote_rocker[0];
+        remoteInfo.rocker[1] = remote_rocker[1];
+        remoteInfo.rocker[2] = remote_rocker[2];
+        remoteInfo.rocker[3] = remote_rocker[3];
+        remoteInfo.Key = remote_key;
+        asyn_comm_send_pack_nak((uint8_t *)&remoteInfo,0x01,sizeof(remoteInfo));
+    
         // 使用vTaskDelayUntil确保固定频率
         vTaskDelayUntil(&last_wake_time, update_interval);
     }
