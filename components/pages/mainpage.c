@@ -27,6 +27,9 @@ static uint16_t remote_key = 0;
 static SemaphoreHandle_t remote_data_semaphore = NULL;
 static volatile uint8_t labels_created = 0;
 
+// 全局任务句柄，供其他文件访问
+TaskHandle_t remote_state_task_handle = NULL;
+
 static void remote_state_task(void *pvParameters)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
@@ -47,29 +50,52 @@ static void remote_state_task(void *pvParameters)
         }
         
         // 只有当标签对象创建后才更新UI
-        if(labels_created)
+        if(labels_created && keys_state_label && battery_label && rocker_label)
         {
+            // 检查屏幕是否存在
+            lv_obj_t *scr = lv_screen_active();
+            if(scr == NULL)
+            {
+                // 没有屏幕，跳过UI更新
+                vTaskDelay(update_interval);
+                continue;
+            }
+            
+            // 检查标签是否仍然有效
+            if(!lv_obj_is_valid(keys_state_label) || !lv_obj_is_valid(battery_label) || !lv_obj_is_valid(rocker_label))
+            {
+                // 标签无效，跳过UI更新
+                vTaskDelay(update_interval);
+                continue;
+            }
+            
             // 无论是否有新数据，都按固定频率处理
             xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
-            char out_str[8]={0};
-            sprintf(out_str,"0x%X",remote_key);
-            sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
-            lv_label_set_text(keys_state_label, out_str);
-            lv_label_set_text(battery_label, battery_show_str);
+            // 再次检查标签是否仍然有效
+            if(lv_obj_is_valid(keys_state_label) && lv_obj_is_valid(battery_label) && lv_obj_is_valid(rocker_label))
+            {
+                char out_str[8]={0};
+                sprintf(out_str,"0x%X",remote_key);
+                sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
+                lv_label_set_text(keys_state_label, out_str);
+                lv_label_set_text(battery_label, battery_show_str);
 
-            // 直接使用处理后的值，不需要再计算
-            int *rocker_processed = (int *)remote_rocker;
-            
-            char rocker_str[64]={0};
-            sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],rocker_processed[2],rocker_processed[3]);
-            lv_label_set_text(rocker_label, rocker_str);
-            static PackControl_t remoteInfo;
-            remoteInfo.rocker[0] = rocker_processed[0];
-            remoteInfo.rocker[1] = rocker_processed[1];
-            remoteInfo.rocker[2] = rocker_processed[2];
-            remoteInfo.rocker[3] = rocker_processed[3];
-            remoteInfo.Key = remote_key;
+                // 直接使用处理后的值，不需要再计算
+                int *rocker_processed = (int *)remote_rocker;
+                
+                char rocker_str[64]={0};
+                sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],rocker_processed[2],rocker_processed[3]);
+                lv_label_set_text(rocker_label, rocker_str);
+            }
             xSemaphoreGive(get_screen_mutex());
+            
+            // 发送数据，无论UI是否更新成功
+            static PackControl_t remoteInfo;
+            remoteInfo.rocker[0] = remote_rocker[0];
+            remoteInfo.rocker[1] = remote_rocker[1];
+            remoteInfo.rocker[2] = remote_rocker[2];
+            remoteInfo.rocker[3] = remote_rocker[3];
+            remoteInfo.Key = remote_key;
             asyn_comm_send_pack_nak((uint8_t *)&remoteInfo,0x01,sizeof(remoteInfo));
         }
         
@@ -86,6 +112,12 @@ static void lwpage_btn_event_cb(lv_event_t *e)
     if(code == LV_EVENT_CLICKED)
     {
         printf("Button clicked, switching to lw_page\r\n");
+        // 暂停远程状态任务，避免在页面切换过程中访问无效的UI元素
+        if(remote_state_task_handle != NULL)
+        {
+            vTaskSuspend(remote_state_task_handle);
+            printf("Remote state task suspended\r\n");
+        }
         uint32_t result = page_switch("lw_page", NULL, NULL);
         printf("page_switch result: %lu\r\n", result);
     }
@@ -107,24 +139,30 @@ static void main_page_remote_state_flush_func(const int *rocker, const uint16_t 
 
 void main_page_create(void *user_data)
 {
+    printf("[MAIN_PAGE] ===== Page creation started =====\r\n");
+    printf("[MAIN_PAGE] user_data = %p\r\n", user_data);
+    
+    // 检查是否已经创建，如果已创建则跳过
     if (main_page_created_flag)
+    {
+        printf("[MAIN_PAGE] Page already created, skipping\r\n");
         return;
+    }
     main_page_created_flag = 1;
+    printf("[MAIN_PAGE] Page created flag set to 1\r\n");
 
     // 创建信号量用于远程数据同步
     remote_data_semaphore = xSemaphoreCreateBinary();
     if(remote_data_semaphore == NULL)
     {
-        // 处理信号量创建失败
-        printf("Failed to create remote data semaphore\n");
+        printf("[MAIN_PAGE] Failed to create remote data semaphore\n");
     }
     
     // 创建远程状态任务，优先级低于CoreTask
-    BaseType_t task_create_result = xTaskCreate(remote_state_task, "remote_state_task", 4096, NULL, 4, NULL);
+    BaseType_t task_create_result = xTaskCreate(remote_state_task, "remote_state_task", 4096, NULL, 4, &remote_state_task_handle);
     if(task_create_result != pdPASS)
     {
-        // 处理任务创建失败
-        printf("Failed to create remote state task\n");
+        printf("[MAIN_PAGE] Failed to create remote state task\n");
     }
 
     //通信模块初始化
@@ -198,4 +236,13 @@ void main_page_create(void *user_data)
     lv_obj_t *lwpage_btn_label = lv_label_create(lwpage_button);
     lv_label_set_text(lwpage_btn_label, "LW Page");
     lv_obj_align(lwpage_btn_label, LV_ALIGN_CENTER, 0, 0);
+    
+    printf("[MAIN_PAGE] ===== Page creation completed =====\r\n");
+    
+    // 页面创建完成，恢复远程状态任务
+    if(remote_state_task_handle != NULL)
+    {
+        vTaskResume(remote_state_task_handle);
+        printf("[MAIN_PAGE] Remote state task resumed\r\n");
+    }
 }

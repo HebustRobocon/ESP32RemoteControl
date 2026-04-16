@@ -3,6 +3,7 @@
 
 // 当前页面的画布容器
 static lv_obj_t *current_page_canvas = NULL;
+static lv_obj_t *page_canvas_stack[16] = {0};
 
 //最多支持16个页面递归
 typedef struct{
@@ -27,6 +28,13 @@ uint32_t page_manager_init(const char *first_page_name,QueueHandle_t screen_mute
         if(strcmp(first_page_name,get_pages_from_index(i)->page_name)==0) //匹配到目标页面
         {
             this_page_port=get_pages_from_index(i);
+            current_page_canvas = lv_scr_act();
+            if(current_page_canvas == NULL)
+            {
+                current_page_canvas = lv_obj_create(NULL);
+                lv_scr_load(current_page_canvas);
+                printf("page_manager_init: created fallback initial screen %p\r\n", (void*)current_page_canvas);
+            }
             xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
             this_page_port->create(NULL);   //该任务没有运行在lv线程中，而是在另一个线程执行，所以用互斥锁保护
             xSemaphoreGive(get_screen_mutex());
@@ -53,18 +61,23 @@ uint32_t page_switch(const char* next_page_name,void *next_page_create_param,voi
         printf("Checking page %d: %s\r\n", i, page->page_name);
         if(strcmp(next_page_name, page->page_name)==0) //匹配到目标页面
         {
+            if(page_create_info_index >= sizeof(page_create_info_stack) / sizeof(page_create_info_stack[0]))
+            {
+                printf("page_switch failed: page stack overflow\r\n");
+                return 0;
+            }
+
             printf("Found page: %s\r\n", next_page_name);
-            page_create_info_stack[page_create_info_index].port_addr=this_page_port;
-            page_create_info_stack[page_create_info_index].page_create_param=this_page_create_param;
+            // 保存当前页面屏幕，后退时恢复
+            page_canvas_stack[page_create_info_index] = lv_scr_act();
+            page_create_info_stack[page_create_info_index].port_addr = this_page_port;
+            page_create_info_stack[page_create_info_index].page_create_param = this_page_create_param;
             page_create_info_index++;
 
-            this_page_port=page;
+            this_page_port = page;
             printf("Creating new page canvas\r\n");
-            // 创建新的画布容器，覆盖整个屏幕
-            current_page_canvas = lv_obj_create(lv_screen_active());
-            lv_obj_set_size(current_page_canvas, lv_pct(100), lv_pct(100));
-            lv_obj_set_pos(current_page_canvas, 0, 0);
-            // 设置画布为当前活动对象，新创建的UI元素会自动添加到这个画布中
+            // 创建新的独立屏幕，并加载它
+            current_page_canvas = lv_obj_create(NULL);
             lv_scr_load(current_page_canvas);
             printf("Calling create function for page: %s\r\n", next_page_name);
             this_page_port->create(next_page_create_param);
@@ -83,27 +96,39 @@ uint32_t return_last_page()
         return 0;
     // 先递减索引，再访问栈元素，避免越界
     page_create_info_index--;
-    this_page_port=page_create_info_stack[page_create_info_index].port_addr;
+    this_page_port = page_create_info_stack[page_create_info_index].port_addr;
     if (!this_page_port) {
         printf("return_last_page failed: saved page port is NULL\r\n");
         return 0;
     }
     printf("Removing current page canvas\r\n");
-    // 删除当前画布，露出下面的页面
     if(current_page_canvas != NULL)
     {
-        // 保存主屏幕的引用
-        lv_obj_t *main_screen = lv_screen_active();
-        // 删除当前画布
-        lv_obj_del(current_page_canvas);
+        lv_obj_t *old_screen = current_page_canvas;
         current_page_canvas = NULL;
-        // 确保主屏幕仍然有效
-        if(main_screen != NULL)
+
+        // 恢复上一个屏幕
+        lv_obj_t *prev_screen = page_canvas_stack[page_create_info_index];
+        printf("return_last_page: prev_screen=%p old_screen=%p active_before=%p\r\n",
+               (void*)prev_screen, (void*)old_screen, (void*)lv_scr_act());
+        if(prev_screen != NULL)
         {
-            // 重新加载主屏幕，确保下面的页面可见
-            lv_scr_load(main_screen);
+            lv_scr_load(prev_screen);
+            page_canvas_stack[page_create_info_index] = NULL;
+        }
+        else
+        {
+            printf("return_last_page: prev_screen is NULL, creating fallback screen\r\n");
+            prev_screen = lv_obj_create(NULL);
+            lv_scr_load(prev_screen);
+        }
+        printf("return_last_page: active_after_load=%p\r\n", (void*)lv_scr_act());
+
+        if(old_screen != prev_screen)
+        {
+            // 延迟删除旧屏幕，避免在当前事件回调或渲染过程中删除活动屏幕
+            lv_obj_del_async(old_screen);
         }
     }
-    this_page_port->create(page_create_info_stack[page_create_info_index].page_create_param);   //执行创建上一个页面
     return 1;
 }
