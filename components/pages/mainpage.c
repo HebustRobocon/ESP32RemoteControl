@@ -11,82 +11,91 @@ void main_page_create(void *user_data);
 UI_PAGE_REGISTER("main_page", main_page_create);
 static uint8_t main_page_created_flag = 0;
 static char battery_show_str[24];
+static char battery_percent_str[24];
 extern int battery_adc_raw_value;
-static void battery_voltage_show_cb(lv_timer_t *timer)
-{
-    lv_obj_t * label=( lv_obj_t *)lv_timer_get_user_data(timer);
-    sprintf(battery_show_str,"Battery level:%.3f%%",Get_Battery_level(CalcBatteryVoltage()));
-    lv_label_set_text_static(label, battery_show_str);
-}
 
-static lv_obj_t *rocker_label;
-static lv_obj_t *battery_label;
+static lv_obj_t *battery_arc;
+static lv_obj_t *battery_percent_label;
+static lv_obj_t *rocker_x_label;
+static lv_obj_t *rocker_y_label;
+static lv_obj_t *rocker_x_arc;
+static lv_obj_t *rocker_y_arc;
 static lv_obj_t *keys_state_label;
+
 static int remote_rocker[4] = {0};
 static uint16_t remote_key = 0;
 static SemaphoreHandle_t remote_data_semaphore = NULL;
-static volatile uint8_t labels_created = 0;
 
 // 全局任务句柄，供其他文件访问
 TaskHandle_t remote_state_task_handle = NULL;
 
+static void battery_update_cb(lv_timer_t *timer)
+{
+    float voltage = CalcBatteryVoltage();
+    float level = Get_Battery_level(voltage);
+    
+    if(lv_obj_is_valid(battery_arc)) {
+        lv_arc_set_value(battery_arc, (int32_t)level);
+    }
+    if(lv_obj_is_valid(battery_percent_label)) {
+        sprintf(battery_percent_str, "%.0f%%", level);
+        lv_label_set_text(battery_percent_label, battery_percent_str);
+    }
+}
+
 static void remote_state_task(void *pvParameters)
 {
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t update_interval = pdMS_TO_TICKS(20); // 20ms更新间隔
+    const TickType_t update_interval = pdMS_TO_TICKS(20);
     
     while(1)
     {
-        // 等待新的远程数据或超时
         if(remote_data_semaphore != NULL)
         {
             xSemaphoreTake(remote_data_semaphore, update_interval);
         }
         else
         {
-            // 信号量未创建，直接延迟
             vTaskDelay(update_interval);
             continue;
         }
         
-        // 检查屏幕是否存在
         lv_obj_t *scr = lv_screen_active();
         if(scr == NULL)
         {
-            // 没有屏幕，跳过UI更新
             vTaskDelay(update_interval);
             continue;
         }
         
-        // 检查标签是否仍然有效
-        if(!lv_obj_is_valid(keys_state_label) || !lv_obj_is_valid(battery_label) || !lv_obj_is_valid(rocker_label))
+        if(!lv_obj_is_valid(keys_state_label) || !lv_obj_is_valid(rocker_x_label) || !lv_obj_is_valid(rocker_y_label))
         {
-            // 标签无效，跳过UI更新
             vTaskDelay(update_interval);
             continue;
         }
         
-        // 无论是否有新数据，都按固定频率处理
         xSemaphoreTake(get_screen_mutex(),portMAX_DELAY);
-        // 再次检查标签是否仍然有效
-        if(lv_obj_is_valid(keys_state_label) && lv_obj_is_valid(battery_label) && lv_obj_is_valid(rocker_label))
+        if(lv_obj_is_valid(keys_state_label) && lv_obj_is_valid(rocker_x_label) && lv_obj_is_valid(rocker_y_label))
         {
-            char out_str[8]={0};
-            sprintf(out_str,"0x%X",remote_key);
-            sprintf(battery_show_str,"Battery voltage:%.3f",CalcBatteryVoltage());
+            char out_str[16]={0};
+            sprintf(out_str,"KEY: 0x%04X", remote_key);
             lv_label_set_text(keys_state_label, out_str);
-            lv_label_set_text(battery_label, battery_show_str);
-
-            // 直接使用处理后的值，不需要再计算
+            
             int *rocker_processed = (int *)remote_rocker;
             
-            char rocker_str[64]={0};
-            sprintf(rocker_str,"Rocker: %d,%d,%d,%d",rocker_processed[0],rocker_processed[1],rocker_processed[2],rocker_processed[3]);
-            lv_label_set_text(rocker_label, rocker_str);
+            char x_str[16], y_str[16];
+            sprintf(x_str, "X: %d", rocker_processed[0]);
+            sprintf(y_str, "Y: %d", rocker_processed[1]);
+            lv_label_set_text(rocker_x_label, x_str);
+            lv_label_set_text(rocker_y_label, y_str);
+            
+            // Normalize rocker values (-100 to 100) for arc display
+            int32_t x_val = (rocker_processed[0] + 100) / 2;
+            int32_t y_val = (rocker_processed[1] + 100) / 2;
+            if(lv_obj_is_valid(rocker_x_arc)) lv_arc_set_value(rocker_x_arc, x_val);
+            if(lv_obj_is_valid(rocker_y_arc)) lv_arc_set_value(rocker_y_arc, y_val);
         }
         xSemaphoreGive(get_screen_mutex());
         
-        // 发送数据，无论UI是否更新成功
         static PackControl_t remoteInfo;
         remoteInfo.rocker[0] = remote_rocker[0];
         remoteInfo.rocker[1] = remote_rocker[1];
@@ -95,38 +104,28 @@ static void remote_state_task(void *pvParameters)
         remoteInfo.Key = remote_key;
         asyn_comm_send_pack_nak((uint8_t *)&remoteInfo,0x01,sizeof(remoteInfo));
     
-        // 使用vTaskDelayUntil确保固定频率
         vTaskDelayUntil(&last_wake_time, update_interval);
     }
 }
 
-// 按钮事件回调 - 跳转到lwpage
 static void lwpage_btn_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    //printf("Button event code: %d\r\n", code);
     if(code == LV_EVENT_CLICKED)
     {
-        printf("Button clicked, switching to lw_page\r\n");
-        // 暂停远程状态任务，避免在页面切换过程中访问无效的UI元素
         if(remote_state_task_handle != NULL)
         {
             vTaskSuspend(remote_state_task_handle);
-            printf("Remote state task suspended\r\n");
         }
-        uint32_t result = page_switch("lw_page", NULL, NULL);
-        printf("page_switch result: %lu\r\n", result);
+        page_switch("lw_page", NULL, NULL);
     }
 }
 
 static void main_page_remote_state_flush_func(const int *rocker, const uint16_t key,void* user_data)
 {
-    // 直接使用传递过来的处理后的值，不需要再计算
-    // 复制数据到全局变量
     memcpy(remote_rocker, rocker, sizeof(remote_rocker));
     remote_key = key;
     
-    // 通知远程状态任务有新数据
     if(remote_data_semaphore != NULL)
     {
         xSemaphoreGive(remote_data_semaphore);
@@ -135,110 +134,168 @@ static void main_page_remote_state_flush_func(const int *rocker, const uint16_t 
 
 void main_page_create(void *user_data)
 {
-    printf("[MAIN_PAGE] ===== Page creation started =====\r\n");
-    printf("[MAIN_PAGE] user_data = %p\r\n", user_data);
-    
-    // 检查是否已经创建，如果已创建则跳过
     if (main_page_created_flag)
     {
-        printf("[MAIN_PAGE] Page already created, skipping\r\n");
         return;
     }
     main_page_created_flag = 1;
-    printf("[MAIN_PAGE] Page created flag set to 1\r\n");
 
-    // 创建信号量用于远程数据同步
     remote_data_semaphore = xSemaphoreCreateBinary();
-    if(remote_data_semaphore == NULL)
-    {
-        printf("[MAIN_PAGE] Failed to create remote data semaphore\n");
-    }
-    
-    // 创建远程状态任务，优先级低于CoreTask
-    BaseType_t task_create_result = xTaskCreate(remote_state_task, "remote_state_task", 4096, NULL, 4, &remote_state_task_handle);
-    if(task_create_result != pdPASS)
-    {
-        printf("[MAIN_PAGE] Failed to create remote state task\n");
-    }
+    xTaskCreate(remote_state_task, "remote_state_task", 4096, NULL, 4, &remote_state_task_handle);
 
-    //通信模块初始化
     RemoteCommInit(NULL);
-    //硬件状态更新任务初始化
     RemoteCoreInit();
 
-    keys_state_label = lv_label_create(lv_screen_active());
-    lv_label_set_text(keys_state_label, "key:");
-    lv_obj_align(keys_state_label, LV_ALIGN_TOP_MID, 0, 0);
-    set_remote_flush_func(main_page_remote_state_flush_func,keys_state_label);
-
-    rocker_label = lv_label_create(lv_screen_active());
-    lv_label_set_text(rocker_label, "Rocker: 0,0,0,0");
-    lv_obj_align(rocker_label, LV_ALIGN_TOP_MID, 0, 50);
-
-    battery_label = lv_label_create(lv_screen_active());
-    lv_label_set_text(battery_label, "Battery voltage:");
-    lv_obj_align(battery_label, LV_ALIGN_TOP_MID, 0, 150);
-    set_remote_flush_func(main_page_remote_state_flush_func,battery_label);
+    // Set screen background
+    lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x121212), LV_PART_MAIN);
     
-    // 所有标签创建完成，设置标志
-    labels_created = 1;
-
-    lv_obj_t *L_label = lv_label_create(lv_screen_active());
-    lv_label_set_text(L_label, "L");
-    // 创建样式
-    static lv_style_t style_L;
-    lv_style_init(&style_L);
-    lv_style_set_text_color(&style_L, lv_color_hex(0xFF0000));//蓝色
-    lv_style_set_text_font(&style_L, &lv_font_montserrat_48);
-    // 应用样式
-    lv_obj_add_style(L_label, &style_L, 0);
-    lv_obj_align(L_label, LV_ALIGN_TOP_MID, -80, 200);
-
-    lv_obj_t *M_label = lv_label_create(lv_screen_active());
-    lv_label_set_text(M_label, "M");
-    // 创建样式
-    static lv_style_t style_M;
-    lv_style_init(&style_M);
-    lv_style_set_text_color(&style_M, lv_color_hex(0x003F34));//粉色
-    lv_style_set_text_font(&style_M, &lv_font_montserrat_48);
-    // 应用样式
-    lv_obj_add_style(M_label, &style_M, 0);
-    lv_obj_align(M_label, LV_ALIGN_TOP_MID, 80, 200);
-
-    lv_obj_t *z_label = lv_label_create(lv_screen_active()); 
-    // 使用UTF-8编码的字符串，避免中文乱码
-    lv_label_set_text(z_label, " 第 一 !!!");
-    // 创建样式
-    static lv_style_t style_Z;
-    lv_style_init(&style_Z);
-    lv_style_set_text_color(&style_Z, lv_color_hex(0xFF00FF));
-    // 使用支持中文的SimSun字体
-    lv_style_set_text_font(&style_Z, &lv_font_simsun_16_cjk);
-    // 应用样式
-    lv_obj_add_style(z_label, &style_Z, 0);
-    lv_obj_align(z_label, LV_ALIGN_TOP_MID, 0, 300);
-
-    lv_obj_t *mylabel = lv_label_create(lv_screen_active());
-    lv_timer_t *battery_voltage_show_timer=lv_timer_create(battery_voltage_show_cb,200,mylabel);
-    lv_timer_enable(battery_voltage_show_timer);
-    lv_obj_align(mylabel, LV_ALIGN_TOP_MID, 0, 100);
+    // Create header container
+    lv_obj_t *header_cont = lv_obj_create(lv_screen_active());
+    lv_obj_set_size(header_cont, 320, 60);
+    lv_obj_align(header_cont, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_color(header_cont, lv_color_hex(0x1E1E1E), LV_PART_MAIN);
+    lv_obj_set_style_border_width(header_cont, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(header_cont, 10, LV_PART_MAIN);
+    lv_obj_set_flex_flow(header_cont, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     
-    // 创建跳转到lwpage的按钮
+    // Title
+    lv_obj_t *title_label = lv_label_create(header_cont);
+    lv_label_set_text(title_label, "ROBOCON RC");
+    lv_obj_set_style_text_color(title_label, lv_color_hex(0x00E5FF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    
+    // Battery container
+    lv_obj_t *battery_cont = lv_obj_create(header_cont);
+    lv_obj_set_size(battery_cont, 80, 50);
+    lv_obj_set_style_bg_opa(battery_cont, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(battery_cont, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(battery_cont, 0, LV_PART_MAIN);
+    
+    battery_arc = lv_arc_create(battery_cont);
+    lv_arc_set_range(battery_arc, 0, 100);
+    lv_arc_set_value(battery_arc, 0);
+    lv_obj_set_size(battery_arc, 40, 40);
+    lv_obj_center(battery_arc);
+    lv_obj_set_style_arc_color(battery_arc, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(battery_arc, lv_color_hex(0x00E676), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(battery_arc, 4, LV_PART_MAIN | LV_PART_INDICATOR);
+    
+    battery_percent_label = lv_label_create(battery_cont);
+    lv_label_set_text(battery_percent_label, "0%");
+    lv_obj_center(battery_percent_label);
+    lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_10, LV_PART_MAIN);
+    
+    // Create main content container
+    lv_obj_t *main_cont = lv_obj_create(lv_screen_active());
+    lv_obj_set_size(main_cont, 320, 260);
+    lv_obj_align(main_cont, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_set_style_bg_opa(main_cont, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(main_cont, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(main_cont, 15, LV_PART_MAIN);
+    
+    // Create rocker cards
+    lv_obj_t *rocker_card = lv_obj_create(main_cont);
+    lv_obj_set_size(rocker_card, 290, 140);
+    lv_obj_align(rocker_card, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_color(rocker_card, lv_color_hex(0x1E1E1E), LV_PART_MAIN);
+    lv_obj_set_style_radius(rocker_card, 12, LV_PART_MAIN);
+    lv_obj_set_style_border_width(rocker_card, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(rocker_card, 12, LV_PART_MAIN);
+    
+    // Rocker title
+    lv_obj_t *rocker_title = lv_label_create(rocker_card);
+    lv_label_set_text(rocker_title, "ROCKER STATE");
+    lv_obj_align(rocker_title, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_text_color(rocker_title, lv_color_hex(0xBBBBBB), LV_PART_MAIN);
+    lv_obj_set_style_text_font(rocker_title, &lv_font_montserrat_12, LV_PART_MAIN);
+    
+    // X axis container
+    lv_obj_t *x_cont = lv_obj_create(rocker_card);
+    lv_obj_set_size(x_cont, 260, 40);
+    lv_obj_align(x_cont, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_set_style_bg_opa(x_cont, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(x_cont, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(x_cont, 0, LV_PART_MAIN);
+    
+    rocker_x_arc = lv_arc_create(x_cont);
+    lv_arc_set_mode(rocker_x_arc, LV_ARC_MODE_SYMMETRICAL);
+    lv_arc_set_range(rocker_x_arc, 0, 100);
+    lv_arc_set_value(rocker_x_arc, 50);
+    lv_obj_set_size(rocker_x_arc, 30, 30);
+    lv_obj_align(rocker_x_arc, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_arc_color(rocker_x_arc, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(rocker_x_arc, lv_color_hex(0xFF5252), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(rocker_x_arc, 4, LV_PART_MAIN | LV_PART_INDICATOR);
+    
+    rocker_x_label = lv_label_create(x_cont);
+    lv_label_set_text(rocker_x_label, "X: 0");
+    lv_obj_align(rocker_x_label, LV_ALIGN_LEFT_MID, 40, 0);
+    lv_obj_set_style_text_color(rocker_x_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(rocker_x_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    
+    // Y axis container
+    lv_obj_t *y_cont = lv_obj_create(rocker_card);
+    lv_obj_set_size(y_cont, 260, 40);
+    lv_obj_align(y_cont, LV_ALIGN_TOP_MID, 0, 80);
+    lv_obj_set_style_bg_opa(y_cont, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(y_cont, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(y_cont, 0, LV_PART_MAIN);
+    
+    rocker_y_arc = lv_arc_create(y_cont);
+    lv_arc_set_mode(rocker_y_arc, LV_ARC_MODE_SYMMETRICAL);
+    lv_arc_set_range(rocker_y_arc, 0, 100);
+    lv_arc_set_value(rocker_y_arc, 50);
+    lv_obj_set_size(rocker_y_arc, 30, 30);
+    lv_obj_align(rocker_y_arc, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_arc_color(rocker_y_arc, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(rocker_y_arc, lv_color_hex(0x5252FF), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(rocker_y_arc, 4, LV_PART_MAIN | LV_PART_INDICATOR);
+    
+    rocker_y_label = lv_label_create(y_cont);
+    lv_label_set_text(rocker_y_label, "Y: 0");
+    lv_obj_align(rocker_y_label, LV_ALIGN_LEFT_MID, 40, 0);
+    lv_obj_set_style_text_color(rocker_y_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(rocker_y_label, &lv_font_montserrat_14, LV_PART_MAIN);
+    
+    // Keys card
+    lv_obj_t *keys_card = lv_obj_create(main_cont);
+    lv_obj_set_size(keys_card, 290, 60);
+    lv_obj_align(keys_card, LV_ALIGN_TOP_MID, 0, 160);
+    lv_obj_set_style_bg_color(keys_card, lv_color_hex(0x1E1E1E), LV_PART_MAIN);
+    lv_obj_set_style_radius(keys_card, 12, LV_PART_MAIN);
+    lv_obj_set_style_border_width(keys_card, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(keys_card, 12, LV_PART_MAIN);
+    
+    keys_state_label = lv_label_create(keys_card);
+    lv_label_set_text(keys_state_label, "KEY: 0x0000");
+    lv_obj_center(keys_state_label);
+    lv_obj_set_style_text_color(keys_state_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(keys_state_label, &lv_font_montserrat_16, LV_PART_MAIN);
+    
+    set_remote_flush_func(main_page_remote_state_flush_func, keys_state_label);
+    
+    // LW Page button
     lv_obj_t *lwpage_button = lv_btn_create(lv_screen_active());
-    lv_obj_set_size(lwpage_button, 120, 60);
-    lv_obj_align(lwpage_button, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_set_size(lwpage_button, 200, 50);
+    lv_obj_align(lwpage_button, LV_ALIGN_BOTTOM_MID, 0, -15);
+    lv_obj_set_style_bg_color(lwpage_button, lv_color_hex(0x00E5FF), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(lwpage_button, lv_color_hex(0x00B8D4), LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_radius(lwpage_button, 25, LV_PART_MAIN);
     lv_obj_add_event_cb(lwpage_button, lwpage_btn_event_cb, LV_EVENT_CLICKED, NULL);
     
     lv_obj_t *lwpage_btn_label = lv_label_create(lwpage_button);
-    lv_label_set_text(lwpage_btn_label, "LW Page");
-    lv_obj_align(lwpage_btn_label, LV_ALIGN_CENTER, 0, 0);
+    lv_label_set_text(lwpage_btn_label, "LW PAGE");
+    lv_obj_center(lwpage_btn_label);
+    lv_obj_set_style_text_color(lwpage_btn_label, lv_color_hex(0x121212), LV_PART_MAIN);
+    lv_obj_set_style_text_font(lwpage_btn_label, &lv_font_montserrat_16, LV_PART_MAIN);
     
-    printf("[MAIN_PAGE] ===== Page creation completed =====\r\n");
+    lv_timer_t *battery_timer = lv_timer_create(battery_update_cb, 500, NULL);
+    lv_timer_enable(battery_timer);
     
-    // 页面创建完成，恢复远程状态任务
     if(remote_state_task_handle != NULL)
     {
         vTaskResume(remote_state_task_handle);
-        printf("[MAIN_PAGE] Remote state task resumed\r\n");
     }
 }
