@@ -1,4 +1,4 @@
-file(GLOB PAGE_SRCS "lwpage.c" "mainpage.c" "page_manager.c" "*.c")
+file(GLOB PAGE_SRCS "lwpage.c" "obj_page.c" "mainpage.c" "page_manager.c" "lwpage.c")
 idf_component_register(SRCS "${PAGE_SRCS}"
     INCLUDE_DIRS "."
     REQUIRES driver lvgl freertos fatfs core screen

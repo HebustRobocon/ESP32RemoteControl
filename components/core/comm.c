@@ -145,7 +145,7 @@ void SendDataPackTask(void *param)
     while (1)
     {
         xQueueReceive(send_req_queue_handle, &req, portMAX_DELAY);
-        uint32_t pack_id = g_pack_id++;
+        uint32_t pack_id = g_pack_id++; // 自动分配递增的 pack_id
 
         if (req.size + PACK_OVERHEAD > PACK_MAX_SIZE) {
             if (req.finished_cb) {
@@ -203,7 +203,7 @@ void SendDataPackTask(void *param)
     }
 }
 
-static void flush_uart_buffer(void)
+void flush_uart_buffer(void)
 {
     uint8_t dummy[64];
     // 清空UART接收缓冲区

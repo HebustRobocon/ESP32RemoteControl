@@ -73,4 +73,6 @@ uint32_t comm_send_pack_ack(uint8_t *src, uint8_t cmd, uint16_t size, uint32_t t
  */
 uint32_t asyn_comm_send_pack_ack(uint8_t *src,uint8_t cmd,uint16_t size,CommPackSend_Cb send_cb,void* user_data,uint8_t max_retry_num);
 
+void flush_uart_buffer(void);
+
 #endif

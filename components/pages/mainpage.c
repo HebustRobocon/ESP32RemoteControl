@@ -6,12 +6,19 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "core.h"
+#include "comm.h"
 
 void main_page_create(void *user_data);
+void main_page_remote_state_flush_func(const int *rocker, const uint16_t key, void *user_data);
 UI_PAGE_REGISTER("main_page", main_page_create);
 static uint8_t main_page_created_flag = 0;
 static char battery_show_str[24];
 extern int battery_adc_raw_value;
+
+void remote_flush_empty_func(const int *rocker, const uint16_t key, void *user_data)
+{
+    // 什么都不做，也不释放信号量，彻底切断发送触发链
+}
 static void battery_voltage_show_cb(lv_timer_t *timer)
 {
     lv_obj_t * label=( lv_obj_t *)lv_timer_get_user_data(timer);
@@ -21,7 +28,7 @@ static void battery_voltage_show_cb(lv_timer_t *timer)
 
 static lv_obj_t *rocker_label;
 static lv_obj_t *battery_label;
-static lv_obj_t *keys_state_label;
+lv_obj_t *keys_state_label;
 static int remote_rocker[4] = {0};
 static uint16_t remote_key = 0;
 static SemaphoreHandle_t remote_data_semaphore = NULL;
@@ -107,6 +114,7 @@ static void lwpage_btn_event_cb(lv_event_t *e)
     //printf("Button event code: %d\r\n", code);
     if(code == LV_EVENT_CLICKED)
     {
+        set_remote_flush_func(remote_flush_empty_func, NULL); // 停止底层硬件对回调的触发，设置为 NULL 或空函数
         printf("Button clicked, switching to lw_page\r\n");
         // 暂停远程状态任务，避免在页面切换过程中访问无效的UI元素
         if(remote_state_task_handle != NULL)
@@ -119,7 +127,25 @@ static void lwpage_btn_event_cb(lv_event_t *e)
     }
 }
 
-static void main_page_remote_state_flush_func(const int *rocker, const uint16_t key,void* user_data)
+static void obj_page_btn_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    //printf("Button event code: %d\r\n", code);
+    if(code == LV_EVENT_CLICKED)
+    {
+        set_remote_flush_func(remote_flush_empty_func, NULL); // 停止底层硬件对回调的触发，设置为 NULL 或空函数
+        printf("Button clicked, switching to obj_page\r\n");
+        // 暂停远程状态任务，避免在页面切换过程中访问无效的UI元素
+        if(remote_state_task_handle != NULL)
+        {
+            vTaskSuspend(remote_state_task_handle);
+            printf("Remote state task suspended\r\n");
+        }
+        uint32_t result = page_switch("obj_page", NULL, NULL);
+        printf("page_switch result: %lu\r\n", result);
+    }
+}
+ void main_page_remote_state_flush_func(const int *rocker, const uint16_t key, void *user_data)
 {
     // 直接使用传递过来的处理后的值，不需要再计算
     // 复制数据到全局变量
@@ -132,7 +158,10 @@ static void main_page_remote_state_flush_func(const int *rocker, const uint16_t 
         xSemaphoreGive(remote_data_semaphore);
     }
 }
-
+static void empty_flush_logic(const int *rockers, const uint16_t key, void *user_data)
+{
+    // 这里什么都不写，或者只打印一个日志（慎用打印，50Hz会刷屏）
+}
 void main_page_create(void *user_data)
 {
     printf("[MAIN_PAGE] ===== Page creation started =====\r\n");
@@ -169,7 +198,8 @@ void main_page_create(void *user_data)
     keys_state_label = lv_label_create(lv_screen_active());
     lv_label_set_text(keys_state_label, "key:");
     lv_obj_align(keys_state_label, LV_ALIGN_TOP_MID, 0, 0);
-    set_remote_flush_func(main_page_remote_state_flush_func,keys_state_label);
+    set_remote_flush_func(main_page_remote_state_flush_func, keys_state_label);
+    // set_remote_flush_func(empty_flush_logic, NULL);
 
     rocker_label = lv_label_create(lv_screen_active());
     lv_label_set_text(rocker_label, "Rocker: 0,0,0,0");
@@ -179,7 +209,8 @@ void main_page_create(void *user_data)
     lv_label_set_text(battery_label, "Battery voltage:");
     lv_obj_align(battery_label, LV_ALIGN_TOP_MID, 0, 150);
     set_remote_flush_func(main_page_remote_state_flush_func,battery_label);
-    
+    // set_remote_flush_func(empty_flush_logic, NULL);
+
     // 所有标签创建完成，设置标志
     labels_created = 1;
 
@@ -223,16 +254,41 @@ void main_page_create(void *user_data)
     lv_timer_enable(battery_voltage_show_timer);
     lv_obj_align(mylabel, LV_ALIGN_TOP_MID, 0, 100);
     
-    // 创建跳转到lwpage的按钮
-    lv_obj_t *lwpage_button = lv_btn_create(lv_screen_active());
-    lv_obj_set_size(lwpage_button, 120, 60);
-    lv_obj_align(lwpage_button, LV_ALIGN_BOTTOM_MID, 0, -20);
-    lv_obj_add_event_cb(lwpage_button, lwpage_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    // // 创建跳转到lwpage的按钮
+    // lv_obj_t *lwpage_button = lv_btn_create(lv_screen_active());
+    // lv_obj_set_size(lwpage_button, 120, 60);
+    // lv_obj_align(lwpage_button, LV_ALIGN_BOTTOM_MID, 0, -20);
+    // lv_obj_add_event_cb(lwpage_button, lwpage_btn_event_cb, LV_EVENT_CLICKED, NULL);
     
+    // lv_obj_t *lwpage_btn_label = lv_label_create(lwpage_button);
+    // lv_label_set_text(lwpage_btn_label, "LW Page");
+    // lv_obj_align(lwpage_btn_label, LV_ALIGN_CENTER, 0, 0);
+
+    /* --- 按钮布局修改开始 --- */
+
+    // 1. 创建左侧的 "LW Page" 按钮
+    lv_obj_t *lwpage_button = lv_btn_create(lv_screen_active());
+    lv_obj_set_size(lwpage_button, 100, 50); // 略微缩小尺寸以适应并排
+    // 对齐到左下角，水平偏移 15，垂直偏移 -20
+    lv_obj_align(lwpage_button, LV_ALIGN_BOTTOM_LEFT, 15, -20);
+    lv_obj_add_event_cb(lwpage_button, lwpage_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
     lv_obj_t *lwpage_btn_label = lv_label_create(lwpage_button);
     lv_label_set_text(lwpage_btn_label, "LW Page");
-    lv_obj_align(lwpage_btn_label, LV_ALIGN_CENTER, 0, 0);
-    
+    lv_obj_center(lwpage_btn_label);
+
+    // 2. 创建右侧的 "OBJ Page" 按钮
+    lv_obj_t *obj_page_button = lv_btn_create(lv_screen_active());
+    lv_obj_set_size(obj_page_button, 100, 50);
+    // 对齐到右下角，水平偏移 -15，垂直偏移 -20
+    lv_obj_align(obj_page_button, LV_ALIGN_BOTTOM_RIGHT, -15, -20);
+    lv_obj_add_event_cb(obj_page_button, obj_page_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *obj_btn_label = lv_label_create(obj_page_button);
+    lv_label_set_text(obj_btn_label, "obj_Page");
+    lv_obj_center(obj_btn_label);
+
+    /* --- 按钮布局修改结束 --- */
     printf("[MAIN_PAGE] ===== Page creation completed =====\r\n");
     
     // 页面创建完成，恢复远程状态任务

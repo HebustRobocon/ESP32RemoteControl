@@ -94,6 +94,7 @@ void default_remote_state_flush(const int *rockers, const uint16_t key,void* use
     
     remoteInfo->Key = key;
     asyn_comm_send_pack_nak((uint8_t *)remoteInfo, PACK_CONTROL_CMD, sizeof(PackControl_t));
+    printf("DEBUG: Default Flush Running\n");
 }
 
 static PackControl_t remoteInfo;
@@ -125,11 +126,11 @@ void CoreTask(void *param) // 遥控器核心任务
         //printf("rocker_adc_value[0]:%d,rocker_adc_value[1]:%d,rocker_adc_value[2]:%d,rocker_adc_value[3]:%d\n",rocker_adc_value[0],rocker_adc_value[1],rocker_adc_value[2],rocker_adc_value[3]);
         // 计算摇杆值
         int rocker_raw_value[4];
-        rocker_raw_value[0] = Process(rocker_adc_value[0], 450, 0);
-        rocker_raw_value[1] = Process(rocker_adc_value[1], 450, 0);
-        rocker_raw_value[2] = Process(rocker_adc_value[2], 450, 0);
-        rocker_raw_value[3] = Process(rocker_adc_value[3], 450, 0);
-        
+        rocker_raw_value[0] = Process(rocker_adc_value[0], 300, 0);
+        rocker_raw_value[1] = Process(rocker_adc_value[1], 300, 0);
+        rocker_raw_value[2] = Process(rocker_adc_value[2], 300, 0);
+        rocker_raw_value[3] = Process(rocker_adc_value[3], 300, 0);
+
         //遥控器状态刷新 - 传递处理后的摇杆值
         kRemoteStateFlushFunc(rocker_raw_value,buttons_state,kRemoteStateFlushUserData);
         //电池电量更新
