@@ -87,13 +87,13 @@ void default_remote_state_flush(const int *rockers, const uint16_t key,void* use
     static float rocker_last[4] = {0};
     for (int i = 0; i < 4; i++)
     {
-        rocker_raw_value[i] = 0.21f * rocker_raw_value[i] + (1.0f - 0.21f) * rocker_last[i];
+        rocker_raw_value[i] = 0.05f * rocker_raw_value[i] + (1.0f - 0.05f) * rocker_last[i];
         rocker_last[i] = rocker_raw_value[i];   // 更新历史值
         remoteInfo->rocker[i] = rocker_raw_value[i];
     }
     
     remoteInfo->Key = key;
-    asyn_comm_send_pack_nak((uint8_t *)remoteInfo, PACK_CONTROL_CMD, sizeof(PackControl_t));
+    //asyn_comm_send_pack_nak((uint8_t *)remoteInfo, PACK_CONTROL_CMD, sizeof(PackControl_t));
 }
 
 static PackControl_t remoteInfo;
@@ -102,6 +102,7 @@ static uint16_t buttons_state=0;
 static int rocker_adc_value[4] = {0};     // ADC原始数据
 static RemoteStateFlush_t kRemoteStateFlushFunc = default_remote_state_flush;
 void *kRemoteStateFlushUserData = &remoteInfo;
+PackMerlin_t merlinInfo;
 void CoreTask(void *param) // 遥控器核心任务
 {
     float battery_alpha = 0.95; // 电池电压低通滤波系数
@@ -134,7 +135,8 @@ void CoreTask(void *param) // 遥控器核心任务
         kRemoteStateFlushFunc(rocker_raw_value,buttons_state,kRemoteStateFlushUserData);
         //电池电量更新
         battery_voltage = (1.0f - battery_alpha) * CalcBatteryVoltage() + battery_alpha * battery_voltage;
-
+        //梅林信息
+        //asyn_comm_send_pack_nak((uint8_t *)&merlinInfo, PACK_MERLIN_CMD, sizeof(PackMerlin_t));
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(20));
     }
 }

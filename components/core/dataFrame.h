@@ -43,6 +43,12 @@ typedef struct
 	uint32_t Key;
 }PackControl_t;
 
+#define PACK_MERLIN_CMD    0x02
+typedef struct
+{
+	uint8_t Message[12];
+}PackMerlin_t;
+
 //遥控器上行数据包，字符串反馈信息
 #define PACK_STR_FEEDBACK_CMD    0x02
 typedef struct
@@ -52,7 +58,5 @@ typedef struct
     char* str;
 }PackMsg_t;
 #pragma pack()
-
-
 
 #endif

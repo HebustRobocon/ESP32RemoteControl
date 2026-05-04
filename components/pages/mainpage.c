@@ -77,7 +77,7 @@ static void remote_state_task(void *pvParameters)
             lv_label_set_text(keys_state_label, out_str);
             lv_label_set_text(battery_label, battery_show_str);
 
-            // 直接使用处理后的值，不需要再计算
+            // 直接使用处理后的值，不需要再计算remote_rocker
             int *rocker_processed = (int *)remote_rocker;
             
             char rocker_str[64]={0};
@@ -88,11 +88,14 @@ static void remote_state_task(void *pvParameters)
         
         // 发送数据，无论UI是否更新成功
         static PackControl_t remoteInfo;
-        remoteInfo.rocker[0] = remote_rocker[0];
-        remoteInfo.rocker[1] = remote_rocker[1];
-        remoteInfo.rocker[2] = remote_rocker[2];
-        remoteInfo.rocker[3] = remote_rocker[3];
         remoteInfo.Key = remote_key;
+        static float rocker_last[4] = {0};
+        for (int i = 0; i < 4; i++)
+        {
+            remote_rocker[i] = 0.12f * remote_rocker[i] + (1.0f - 0.12f) * rocker_last[i];
+            rocker_last[i] = remote_rocker[i];   // 更新历史值
+            remoteInfo.rocker[i] = remote_rocker[i];
+        }
         asyn_comm_send_pack_nak((uint8_t *)&remoteInfo,0x01,sizeof(remoteInfo));
     
         // 使用vTaskDelayUntil确保固定频率
