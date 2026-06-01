@@ -81,21 +81,76 @@ static void grid_btn_event_cb(lv_event_t *e)
     }
 }
 // "Send"按钮的回调函数
+// "Send"按钮的回调函数
 static void send_grid_data_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED)
     {
-        // 调用发送函数，发送 12 个方格的状态
-        // 数据长度为 12 * sizeof(block_state_t)
+        int r1_in_set_count = 0; // 指定集合中 R1 的数量
+        int total_r2_count = 0;  // 整个方格中 R2 的数量
+        int total_f_count = 0;   // 整个方格中 F 的数量
+
+        // 遍历所有 12 个方格进行统计
         for (int i = 0; i < 12; i++)
         {
-            Send_Pack[i] = (uint8_t)block_states[i];
+            // 1. 统计整个方格的 R2 和 F 数量
+            if (block_states[i] == STATE_R2)
+            {
+                total_r2_count++;
+            }
+            else if (block_states[i] == STATE_False) // STATE_False 对应文字 "F"
+            {
+                total_f_count++;
+            }
+
+            // 2. 统计指定按键集合（0,3,6,9,10,11,8,5,2,1）中 R1 的数量
+            if (i != 4 && i != 7)
+            {
+                if (block_states[i] == STATE_R1)
+                {
+                    r1_in_set_count++;
+                }
+            }
         }
-        asyn_comm_send_pack_nak(Send_Pack, PACK_LW_GRID_CMD, sizeof(Send_Pack)); // sizeof(Send_Pack)
-        printf("Data size: %d\n", sizeof(Send_Pack));
+
+        // 判断是否满足所有条件：
+        // 条件1：指定集合中[存在且只有] 3 个 R1
+        // 条件2：整个方格中[存在且只有] 4 个 R2
+        // 条件3：整个方格中[存在且只有] 1 个 F
+        if (r1_in_set_count == 3 && total_r2_count == 4 && total_f_count == 1)
+        {
+            // 满足条件，允许执行发送
+            for (int i = 0; i < 12; i++)
+            {
+                Send_Pack[i] = (uint8_t)block_states[i];
+            }
+            asyn_comm_send_pack_nak(Send_Pack, PACK_LW_GRID_CMD, sizeof(Send_Pack));
+            printf("Data sent successfully. Data size: %d\n", (int)sizeof(Send_Pack));
+        }
+        else
+        {
+            // 不满足条件，拒绝发送（你可以在这里添加弹窗提示或蜂鸣器提示）
+            printf("Send blocked! Current: R1(in set)=%d/3, R2(total)=%d/4, F(total)=%d/1\n",
+                   r1_in_set_count, total_r2_count, total_f_count);
+        }
     }
 }
+// static void send_grid_data_event_cb(lv_event_t *e)
+// {
+//     lv_event_code_t code = lv_event_get_code(e);
+//     if (code == LV_EVENT_CLICKED)
+//     {
+//         // 调用发送函数，发送 12 个方格的状态
+//         // 数据长度为 12 * sizeof(block_state_t)
+//         for (int i = 0; i < 12; i++)
+//         {
+//             Send_Pack[i] = (uint8_t)block_states[i];
+//         }
+//         asyn_comm_send_pack_nak(Send_Pack, PACK_LW_GRID_CMD, sizeof(Send_Pack)); // sizeof(Send_Pack)
+//         printf("Data size: %d\n", sizeof(Send_Pack));
+//     }
+// }
 void lw_page_create(void *user_data)
 {
     // 3*4 UI页面

@@ -149,7 +149,7 @@ void obj_page_create(void *user_data)
     lv_label_set_text(back_label, "RETURN");
     lv_obj_center(back_label);
 }
-
+/** 颜色与库中颜色按位取反**/
 // 青青草原绿 0xFF007F
 // 暗绿色     0xFFC0CB
 // 正红色     0x00FFFF
