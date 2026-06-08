@@ -110,13 +110,6 @@ static void lwpage_btn_event_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED)
     {
-        set_remote_flush_func(remote_flush_empty_func, NULL); // 停止底层硬件对回调的触发
-        printf("Button clicked, switching to lw_page\r\n");
-        if (remote_state_task_handle != NULL)
-        {
-            vTaskSuspend(remote_state_task_handle);
-            printf("Remote state task suspended\r\n");
-        }
         uint32_t result = page_switch("lw_page", NULL, NULL);
         printf("page_switch result: %lu\r\n", result);
     }
@@ -285,7 +278,7 @@ void main_page_create(void *user_data)
 
     //3.创建中心对接按钮
     dock_btn = lv_btn_create(lv_screen_active());
-    lv_obj_set_size(dock_btn, 120, 120);                              // 宽高60的精美圆形
+    lv_obj_set_size(dock_btn, 120, 120);                              // 宽高120的精美圆形
     lv_obj_set_style_radius(dock_btn, LV_RADIUS_CIRCLE, 0);         // 圆形
     lv_obj_set_style_bg_color(dock_btn, lv_color_hex(0x00964B), 0); // 初始为红色
     // 居中靠顶对齐，向下偏移 110px 避开Rocker标签，正好贴入正中空白区
