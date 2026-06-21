@@ -126,11 +126,11 @@ void CoreTask(void *param) // 遥控器核心任务
         //printf("rocker_adc_value[0]:%d,rocker_adc_value[1]:%d,rocker_adc_value[2]:%d,rocker_adc_value[3]:%d\n",rocker_adc_value[0],rocker_adc_value[1],rocker_adc_value[2],rocker_adc_value[3]);
         // 计算摇杆值
         int rocker_raw_value[4];
-        rocker_raw_value[0] = Process(rocker_adc_value[0], 450, 0);
-        rocker_raw_value[1] = Process(rocker_adc_value[1], 450, 0);
-        rocker_raw_value[2] = Process(rocker_adc_value[2], 450, 0);
-        rocker_raw_value[3] = Process(rocker_adc_value[3], 450, 0);
-        
+        rocker_raw_value[0] = Process(rocker_adc_value[0], 500, 0);
+        rocker_raw_value[1] = Process(rocker_adc_value[1], 500, 0);
+        rocker_raw_value[2] = Process(rocker_adc_value[2], 500, 0);
+        rocker_raw_value[3] = Process(rocker_adc_value[3], 500, 0);
+
         //遥控器状态刷新 - 传递处理后的摇杆值
         kRemoteStateFlushFunc(rocker_raw_value,buttons_state,kRemoteStateFlushUserData);
         //电池电量更新
